@@ -32,7 +32,7 @@ export function estimateKey(frames: Float64Array[]): KeyEstimate | null {
 }
 
 /** Bonificación (log-emisión) por acordes diatónicos (tríadas y séptimas); índice = raíz*nq + calidad. */
-export function keyPrior(k: KeyEstimate | null, bonus: number, nq = 9): Float64Array {
+export function keyPrior(k: KeyEstimate | null, bonus: number, nq = 12): Float64Array {
   const p = new Float64Array(12 * nq)
   if (!k) return p
   const scale = Math.max(0, Math.min(1, (k.score - 0.2) / 0.4)) * bonus

@@ -17,26 +17,32 @@ Servidores propios: **ninguno**. El audio nunca sale del teléfono. Por segurida
 la escribe cada usuario y queda solo en su dispositivo. El audio de YouTube **no** se extrae ni se analiza; los acordes de un
 archivo propio pueden mostrarse sobre el video con un desfase manual.
 
-## Motor de reconocimiento (v0.3) y limitaciones
-STFT (8192 muestras, salto 2048, 22,05 kHz) → cromagramas por banda (acordes 90–2200 Hz; graves 70–250 Hz) con estimación de
-afinación → **pulso y tempo** (flujo espectral + autocorrelación + programación dinámica) → cromagrama sincronizado al pulso
-(mediana) → **tonalidad** (Krumhansl–Schmuckler) como bonificación suave a acordes diatónicos → apoyo del bajo a la raíz →
-Viterbi con estado «N» (silencio). El compás se estima asumiendo 4/4 y eligiendo como tiempo fuerte el pulso donde más cambian los acordes.
-Si no hay un pulso fiable, usa el modo sin pulso. Supone tempo estable.
+## Motor de reconocimiento (v0.4) y limitaciones
+STFT (ventana 8192 = 371 ms, salto 2048 = 93 ms, 22,05 kHz) → cromagrama solo con la banda **90–700 Hz** (donde están las notas
+de la guitarra; deja afuera buena parte de la voz y sus armónicos) con estimación de afinación → filtro de mediana →
+**tonalidad** (Krumhansl–Schmuckler) como bonificación suave → **Viterbi** con estado «N» (silencio). Cada frame se etiqueta por el
+**centro** de su ventana. Si hay un pulso fiable, cambiar de acorde es más probable **sobre un pulso**, pero ya no se fuerza a la rejilla.
+**Inversiones** (C/E, G/D, Em/B…): solo si un seguimiento del bajo (ventana de 0,74 s, 65–196 Hz) indica la 3ª o la 5ª del acorde
+durante ≥ 0,8 s y hay graves audibles. Vocabularios: **Simples** (mayores y menores, por defecto) y **Avanzados (experimental)**:
+7, maj7, m7, sus2, sus4, dim, aug, 6, add9 y 9, con una penalización para que solo aparezcan con evidencia clara.
 
-Dos vocabularios (se elige en la app, «Acordes»):
-- **Simples** (por defecto): mayores y menores.
-- **Avanzados (experimental)**: añade 7, maj7, m7, sus2, sus4, dim y aug, con una penalización para que solo ganen con evidencia clara.
-
-**Medición (`npm test`; banco SINTÉTICO con guitarra, bajo, batería y melodía; NO son canciones reales):**
-| | v0.1 | v0.3 simples | v0.3 avanzados |
+### Medición con 4 canciones reales (grabaciones y cancioneros aportados por el usuario; el audio NO está en el repositorio)
+Las partituras no traen tiempos, así que las métricas son aproximadas: *en-partitura* = % del tiempo con un acorde del cancionero
+(nivel tríada, con la afinación real: «Buenas noches» suena medio tono abajo); *F1sec* = coincidencia de la secuencia de acordes;
+*cambios* = acordes detectados / del cancionero.
+| | v0.1 | v0.3 (versión anterior de la app) | v0.4 simples |
 |---|---|---|---|
-| Canciones de tríadas (exacto) | 89,7 % | 98,9 % | 82,1 % |
-| Canciones con séptimas/sus (exacto) | 30,5 % | 24,2 % | 49,2 % |
-En música real los resultados serán peores y no están medidos; no se afirma ninguna precisión ni equivalencia con otras apps.
-El modo avanzado mejora séptimas pero empeora canciones simples (más falsos positivos). Diagramas verificados: tríadas (con cejillas
-desplazadas), 7 abiertas, maj7/m7/sus/dim/aug abiertos comunes; el resto muestra «No hay una posición verificada».
-Límites de archivo: 40 MB y 15 min.
+| En-partitura (promedio) | 90,3 % | 90,9 % | 96,6 % |
+| F1 de secuencia (3 canciones) | 51,9 | 31,6 | 61,4 |
+| Cambios en «La noche está muy oscura» (ref. 25) | 29 | **2** | 36 |
+| Cambios en «Buenas noches» (ref. 17) | 26 | **5** | 26 |
+La v0.3 alineaba los acordes al pulso con mucha «inercia» y mantenía el acorde anterior durante compases enteros (ese era el retraso
+que se notaba). La banda 90–700 Hz mejoró las 4 canciones frente a 90–2200 Hz; elegida dejando una canción afuera, la mejora se
+mantiene en 3 de 4 (en «Buenas noches» se elegiría 90–600 Hz, que allí empeora). Ventanas más cortas (186 ms y 93 ms) se probaron
+y **empeoraron** la precisión (más cambios falsos), así que se mantuvo 371 ms con salto de 93 ms.
+Errores típicos que persisten: mayor/menor confundidos (Am leído como A), acordes «de paso» de la voz o del bajo, y C/E o G/D leídos
+como Am o G. El modo Avanzado no mejora a Simples en estas canciones (F1 57,7 vs 61,4).
+Reproducir la medición: `frontend/tools/eval-real.ts` (instrucciones en el archivo). Límites de archivo: 40 MB y 15 min.
 
 ## ¿Analizar el audio de YouTube en tiempo real? Decisión: no
 - **Técnicamente** (no comprobado en un dispositivo): el reproductor IFrame de YouTube no entrega audio. En Android 10+ la API

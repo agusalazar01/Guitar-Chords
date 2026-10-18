@@ -10,8 +10,9 @@ export const QUALITIES: QualityDef[] = [
   { suffix: '7', iv: [0, 4, 7, 10], ext: true }, { suffix: 'maj7', iv: [0, 4, 7, 11], ext: true },
   { suffix: 'm7', iv: [0, 3, 7, 10], ext: true }, { suffix: 'sus2', iv: [0, 2, 7], ext: true },
   { suffix: 'sus4', iv: [0, 5, 7], ext: true }, { suffix: 'dim', iv: [0, 3, 6], ext: true }, { suffix: 'aug', iv: [0, 4, 8], ext: true },
+  { suffix: '6', iv: [0, 4, 7, 9], ext: true }, { suffix: 'add9', iv: [0, 2, 4, 7], ext: true }, { suffix: '9', iv: [0, 2, 4, 7, 10], ext: true },
 ]
-export const Q = { maj: 0, min: 1, dom7: 2, maj7: 3, min7: 4, sus2: 5, sus4: 6, dim: 7, aug: 8 }
+export const Q = { maj: 0, min: 1, dom7: 2, maj7: 3, min7: 4, sus2: 5, sus4: 6, dim: 7, aug: 8, six: 9, add9: 10, nine: 11 }
 
 /** Estado = raíz * nq + calidad. */
 export function buildTemplates(nq = QUALITIES.length): { names: string[]; tpl: Float64Array[]; ext: boolean[] } {
@@ -31,6 +32,8 @@ export interface DecodeOptions {
   prior?: Float64Array | null // bonificación por acorde (p. ej. tonalidad)
   bass?: Float64Array[] | null; bassWeight?: number // cromagrama de graves: apoya la raíz del acorde
   triadsOnly?: boolean; extPenalty?: number // vocabulario y penalización de acordes extendidos
+  bassGate?: boolean // true: el peso del bajo se atenúa si hay pocos graves; false: el bajo ya viene normalizado
+  stayAt?: Float64Array | null // prob. de mantener el acorde al entrar en cada frame (más baja sobre los pulsos)
 }
 
 /** frames uniformes: frames[t] = 12 energías (sin normalizar), separados `hopSeconds`. */
@@ -40,7 +43,7 @@ export function decodeChords(frames: Float64Array[], hopSeconds: number, o: Deco
 
 /** times[i]..times[i+1] = intervalo del frame i (admite intervalos irregulares, p. ej. pulsos). */
 export function decodeTimed(frames: Float64Array[], times: number[], o: DecodeOptions = {}): Segment[] {
-  const { stay = 0.995, beta = 12, silenceRatio = 0.12, minDuration = 0.3, prior = null, bass = null, bassWeight = 0, triadsOnly = false, extPenalty = 1.5 } = o
+  const { stay = 0.995, beta = 12, silenceRatio = 0.12, minDuration = 0.3, prior = null, bass = null, bassWeight = 0, triadsOnly = false, extPenalty = 1.5, stayAt = null, bassGate = true } = o
   const nq = triadsOnly ? 2 : QUALITIES.length
   const T = frames.length
   if (T === 0) return []
@@ -59,7 +62,7 @@ export function decodeTimed(frames: Float64Array[], times: number[], o: DecodeOp
     let bmax = 0, bsum = 0, fsum = 0
     if (bass) for (let i = 0; i < 12; i++) { bmax = Math.max(bmax, bass[t][i]); bsum += bass[t][i]; fsum += frames[t][i] }
     // el apoyo del bajo solo cuenta si hay graves audibles frente al resto del espectro
-    const bw = bass && fsum > 0 ? bassWeight * Math.min(1, bsum / (0.35 * fsum)) : 0
+    const bw = !bass ? 0 : bassGate ? (fsum > 0 ? bassWeight * Math.min(1, bsum / (0.35 * fsum)) : 0) : (bsum > 0 ? bassWeight : 0)
     for (let s = 0; s < nc; s++) {
       let d = 0
       for (let i = 0; i < 12; i++) d += tpl[s][i] * frames[t][i]
@@ -85,10 +88,11 @@ export function decodeTimed(frames: Float64Array[], times: number[], o: DecodeOp
   for (let t = 1; t < T; t++) {
     let prev = 0
     for (let s = 1; s < n; s++) if (delta[s] > delta[prev]) prev = s
-    const move = delta[prev] + logMove
+    const ls = stayAt ? Math.log(stayAt[t]) : logStay
+    const move = delta[prev] + (stayAt ? Math.log((1 - stayAt[t]) / 24) : logMove)
     emis(t, e)
     for (let s = 0; s < n; s++) {
-      const st = delta[s] + logStay
+      const st = delta[s] + ls
       if (st >= move) { back[t * n + s] = s; next[s] = st + e[s] } else { back[t * n + s] = prev; next[s] = move + e[s] }
     }
     ;[delta, next] = [next, delta]

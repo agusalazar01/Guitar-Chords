@@ -19,6 +19,7 @@ import type { Song } from './lib/songs.ts'
 import type { Segment } from './lib/types.ts'
 
 type Source = 'none' | 'demo' | 'analysis'
+const APP_VERSION = '0.4.0'
 const YT_RATES = [0.5, 0.75, 1, 1.25]
 const AUDIO_RATES = [0.5, 0.6, 0.75, 0.9, 1, 1.25]
 const CHORD_OK = /^(N|[A-G][#b]?(maj7|m7|sus2|sus4|dim|aug|m|7)?)$/
@@ -70,6 +71,7 @@ export default function App() {
   const [focusIdx, setFocusIdx] = useState<number | null>(null)
   const [dark, setDark] = useState(() => store.get('dark', window.matchMedia('(prefers-color-scheme: dark)').matches))
   const [settings, setSettings] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(true) // se cierra al elegir un video; la lupa lo reabre
   const [easyOnly, setEasyOnly] = useState(() => store.get('easyOnly', false))
   const [recent, setRecent] = useState(() => store.get<{ id: string; title: string }[]>('recent', []))
   const [notice, setNotice] = useState<string | null>(null)
@@ -225,6 +227,8 @@ export default function App() {
           <h1 className="text-lg font-extrabold">Guitar Chords</h1>
           <div className="flex gap-2">
             {installEvt && <button className={small} onClick={() => installEvt.prompt?.()}>Instalar</button>}
+            <button onClick={() => setSearchOpen((x) => !x)} className="grid h-10 w-10 place-items-center rounded-lg border border-line" aria-label="Buscar canción" aria-expanded={searchOpen}>
+              <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l5 5" /></svg></button>
             <button onClick={() => setSettings((x) => !x)} className={small} aria-expanded={settings}>Ajustes</button>
           </div>
         </div>
@@ -232,19 +236,25 @@ export default function App() {
           <div className="flex flex-wrap gap-4 text-sm">
             <label className="flex items-center gap-2"><input type="checkbox" checked={dark} onChange={(e) => setDark(e.target.checked)} /> Tema oscuro</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={easyOnly} onChange={(e) => setEasyOnly(e.target.checked)} /> Priorizar posiciones sin cejilla completa</label>
+            <p className="w-full text-xs text-mute">Versión {APP_VERSION}</p>
             <label className="w-full">Clave propia de YouTube Data API v3 (opcional, solo para buscar; se guarda solo en este teléfono)
               <input value={ytKey} onChange={(e) => setYtKey(e.target.value.trim())} autoComplete="off" className="mt-1 min-h-11 w-full rounded-lg border border-line bg-panel px-3" /></label>
           </div>
         )}
-        <SearchPanel onPick={pickVideo} recent={recent} apiKey={ytKey} />
+        {searchOpen && <SearchPanel onPick={(v) => { pickVideo(v); setSearchOpen(false) }} recent={recent} apiKey={ytKey} />}
       </header>
 
       <main className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
         {source === 'demo' && <p className="rounded bg-accent/20 p-2 text-sm font-semibold">DEMOSTRACIÓN: acordes de ejemplo, no corresponden al video ni a un análisis real.</p>}
-        {source === 'analysis' && song && <p className="text-xs text-mute">«{song.filename}» · {song.method}.{advanced && ' Modo avanzado (experimental): reconoce más tipos de acordes pero se equivoca más.'}{mode === 'youtube' && ' Con otra versión del video habrá desincronización: usá «Alinear».'}{song.lowConfidence && ' Confianza media baja: revisá los acordes marcados con ≈.'}</p>}
         {notice && <p role="alert" className="text-sm text-red-500">{notice}</p>}
         {segments.length ? (
           <>
+            <BeatGrid segments={segments} beats={song?.beats ?? []} downbeat={song?.downbeat ?? 0} bpb={bpb} time={fileTime} hideNames={hideNames} />
+            {info && <p className="text-xs text-mute">{info}</p>}
+            <ChordStrip segments={segments} activeIndex={activeIndex} time={fileTime} hideNames={hideNames} easyOnly={easyOnly}
+              alt={alt} onAlt={(c) => setAlt((a) => ({ ...a, [c]: (a[c] ?? 0) + 1 }))} onSelect={selectChord} />
+            <section className={box}>
+              <h2 className="mb-2 font-semibold">Opciones</h2>
             <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
               <div className="rounded-lg border border-line bg-panel p-2">
                 <span className="text-xs text-mute">Acordes</span>
@@ -258,10 +268,6 @@ export default function App() {
               <label className="flex items-center gap-2 rounded-lg border border-line bg-panel p-2"><input type="checkbox" checked={hideNames} onChange={(e) => setHideNames(e.target.checked)} /> Ocultar nombres</label>
             </div>
             {capo > 0 && <p className="text-xs text-mute">Con cejilla en el traste {capo} se muestran las formas a tocar; el sonido sigue siendo el de la canción.</p>}
-            <BeatGrid segments={segments} beats={song?.beats ?? []} downbeat={song?.downbeat ?? 0} bpb={bpb} time={fileTime} hideNames={hideNames} />
-            {info && <p className="text-xs text-mute">{info}</p>}
-            <ChordStrip segments={segments} activeIndex={activeIndex} time={fileTime} hideNames={hideNames} easyOnly={easyOnly}
-              alt={alt} onAlt={(c) => setAlt((a) => ({ ...a, [c]: (a[c] ?? 0) + 1 }))} onSelect={selectChord} />
             {mode === 'youtube' && source === 'analysis' && (
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span>Desfase {offset.toFixed(1)} s</span>
@@ -269,6 +275,8 @@ export default function App() {
                 <button className={small} onClick={() => setOffset((o) => Math.round((o + 0.1) * 10) / 10)}>+0,1</button>
                 <button className={small} disabled={shownIdx === null} onClick={alignToVideo}>Alinear: este acorde empieza ahora</button>
               </div>)}
+              {source === 'analysis' && song && <p className="text-xs text-mute">«{song.filename}» · {song.method}.{advanced && ' Modo avanzado (experimental): reconoce más tipos de acordes pero se equivoca más.'}{mode === 'youtube' && ' Con otra versión del video habrá desincronización: usá «Alinear».'}{song.lowConfidence && ' Confianza media baja: revisá los acordes marcados con ≈.'}</p>}
+            </section>
           </>
         ) : (
           <section className={box}>

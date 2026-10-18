@@ -17,15 +17,49 @@ Servidores propios: **ninguno**. El audio nunca sale del teléfono. Por segurida
 la escribe cada usuario y queda solo en su dispositivo. El audio de YouTube **no** se extrae ni se analiza; los acordes de un
 archivo propio pueden mostrarse sobre el video con un desfase manual.
 
-## Motor de reconocimiento (limitaciones)
-STFT (8192 muestras, salto 2048, 22,05 kHz) → cromagrama con estimación de afinación → plantillas de tríadas mayores/menores
-→ Viterbi (suavizado temporal) con estado «N» (silencio). Solo reconoce mayores y menores; no séptimas, suspendidos, inversiones
-ni tonalidad. Sufre con mezclas densas, percusión fuerte, modulaciones y graves. Medido **solo con audio sintético**
-(`npm test`); no está evaluado con canciones reales, así que no se afirma ninguna precisión. Límites: 40 MB y 15 min por archivo.
+## Motor de reconocimiento (v0.3) y limitaciones
+STFT (8192 muestras, salto 2048, 22,05 kHz) → cromagramas por banda (acordes 90–2200 Hz; graves 70–250 Hz) con estimación de
+afinación → **pulso y tempo** (flujo espectral + autocorrelación + programación dinámica) → cromagrama sincronizado al pulso
+(mediana) → **tonalidad** (Krumhansl–Schmuckler) como bonificación suave a acordes diatónicos → apoyo del bajo a la raíz →
+Viterbi con estado «N» (silencio). El compás se estima asumiendo 4/4 y eligiendo como tiempo fuerte el pulso donde más cambian los acordes.
+Si no hay un pulso fiable, usa el modo sin pulso. Supone tempo estable.
+
+Dos vocabularios (se elige en la app, «Acordes»):
+- **Simples** (por defecto): mayores y menores.
+- **Avanzados (experimental)**: añade 7, maj7, m7, sus2, sus4, dim y aug, con una penalización para que solo ganen con evidencia clara.
+
+**Medición (`npm test`; banco SINTÉTICO con guitarra, bajo, batería y melodía; NO son canciones reales):**
+| | v0.1 | v0.3 simples | v0.3 avanzados |
+|---|---|---|---|
+| Canciones de tríadas (exacto) | 89,7 % | 98,9 % | 82,1 % |
+| Canciones con séptimas/sus (exacto) | 30,5 % | 24,2 % | 49,2 % |
+En música real los resultados serán peores y no están medidos; no se afirma ninguna precisión ni equivalencia con otras apps.
+El modo avanzado mejora séptimas pero empeora canciones simples (más falsos positivos). Diagramas verificados: tríadas (con cejillas
+desplazadas), 7 abiertas, maj7/m7/sus/dim/aug abiertos comunes; el resto muestra «No hay una posición verificada».
+Límites de archivo: 40 MB y 15 min.
+
+## ¿Analizar el audio de YouTube en tiempo real? Decisión: no
+- **Técnicamente** (no comprobado en un dispositivo): el reproductor IFrame de YouTube no entrega audio. En Android 10+ la API
+  `AudioPlaybackCapture` copia audio de reproductores `USAGE_MEDIA/GAME/UNKNOWN` y exige permiso `RECORD_AUDIO`, el aviso de consentimiento de
+  `MediaProjection` y un plugin nativo; el audio interno se captura sin micrófono, pero cada app puede excluirse de la captura y no sé si el
+  audio del WebView/iframe sería capturable.
+- **Condiciones de uso**: las políticas de YouTube para desarrolladores prohíben ofrecer la posibilidad de descargar o separar pistas de audio y
+  separar o aislar componentes de audio de un video, y recomiendan una *auditoría de cumplimiento de la API* ante dudas. Por eso **no se implementó**
+  la captura ni el análisis del audio de YouTube.
+- **Alternativas incluidas**: analizar un MP3/WAV propio (todo en el teléfono) y mostrarlo sobre el video con desfase manual o con «Alinear: este acorde empieza ahora».
+  Si en el futuro conseguís autorización o una fuente de acordes con licencia, la arquitectura (motor separado del reproductor) lo permite.
 
 ## Datos en el teléfono
 Se guardan en IndexedDB: audio, acordes originales, correcciones, transposición, desfase y video asociado. Borrá una canción
 con «Borrar» (elimina también su audio). Desinstalar la app o borrar sus datos elimina todo. No hay copias de seguridad ni sincronización.
+
+## Versión web de prueba (GitHub Pages)
+Cada *push* a `main` compila y publica la app web en `https://<usuario>.github.io/<repositorio>/` (workflow `pages.yml`).
+Se abre en el navegador del teléfono y es la misma app que la APK, sin generar ni instalar nada. Activación única:
+repositorio → Settings → Pages → Build and deployment → Source: **GitHub Actions**. Los repositorios **privados** necesitan un
+plan de GitHub que incluya Pages; en el plan gratuito, Pages exige repositorio público (el código sería visible).
+Alternativa sin publicar: en un Codespace, `cd frontend && npm install && npm run dev -- --host` y abrir la URL del puerto 5173 (pestaña Ports).
+La APK (workflow `android-debug.yml`) ahora se genera solo a mano, cuando quieras la versión final.
 
 ## Obtener la APK sin computadora
 1. Cuenta en github.com y repositorio nuevo. Con «Sitio de escritorio» en Chrome, abrí Code → Codespaces → Create.

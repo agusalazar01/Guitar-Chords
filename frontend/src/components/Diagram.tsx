@@ -2,12 +2,12 @@ import type { Diagram } from '../lib/types.ts'
 
 const X0 = 40, DX = 24, Y0 = 52, DY = 34, ROWS = 5
 
-export default function DiagramView({ d }: { d: Diagram }) {
+export default function DiagramView({ d, small = false }: { d: Diagram; small?: boolean }) {
   const sx = (i: number) => X0 + i * DX
   const row = (fret: number) => Y0 + (fret - d.base_fret) * DY + DY / 2
   const barred = (i: number, f: number) => d.barre && f === d.barre.fret && i >= d.barre.from_string && i <= d.barre.to_string
   return (
-    <svg viewBox="0 0 200 240" role="img" className="w-full max-w-[260px] mx-auto"
+    <svg viewBox="0 0 200 240" role="img" className={`w-full mx-auto ${small ? 'max-w-[84px]' : 'max-w-[200px]'}`}
       aria-label={`Diagrama de ${d.chord}: ${d.frets.map((f) => (f < 0 ? 'no tocar' : f === 0 ? 'al aire' : `traste ${f}`)).join(', ')}`}>
       {d.base_fret === 1
         ? <line x1={X0 - 2} x2={sx(5) + 2} y1={Y0} y2={Y0} stroke="var(--fg)" strokeWidth="6" />
@@ -31,7 +31,7 @@ export default function DiagramView({ d }: { d: Diagram }) {
           </g>
         )
       })}
-      <text x="100" y="232" textAnchor="middle" fontSize="11" fill="var(--mute)">6ª cuerda a la izquierda</text>
+      {!small && <text x="100" y="232" textAnchor="middle" fontSize="11" fill="var(--mute)">6ª cuerda a la izquierda</text>}
     </svg>
   )
 }

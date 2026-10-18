@@ -1,10 +1,11 @@
 /** Almacenamiento local persistente (IndexedDB): canciones, acordes originales y corregidos, ajustes y el audio. */
 import type { Segment } from './types.ts'
 
-export interface SongSettings { videoId: string | null; transpose: number; offset: number }
+export interface SongSettings { videoId: string | null; transpose: number; offset: number; capo?: number; advanced?: boolean }
 export interface Song {
   id: string; filename: string; createdAt: number; duration: number; method: string; lowConfidence: boolean
   original: Segment[]; corrections: Segment[] | null; settings: SongSettings; audio: Blob
+  beats?: number[]; bpm?: number | null; downbeat?: number; beatsPerBar?: number; key?: string | null; advanced?: Segment[] // análisis v0.3
 }
 
 const DB = 'guitar-chords', STORE = 'songs'

@@ -1,7 +1,6 @@
 name: APK de depuración
 on:
-  push: { branches: [main] }
-  workflow_dispatch:
+  workflow_dispatch: # solo manual: Actions → «APK de depuración» → Run workflow
 permissions:
   contents: write
 jobs:

@@ -4,7 +4,8 @@ import type { Barre, Diagram } from './types.ts'
 export const TUNING = [4, 9, 2, 7, 11, 4] // E A D G B E (clases de altura)
 export const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 const FLATS: Record<string, string> = { Db: 'C#', Eb: 'D#', Gb: 'F#', Ab: 'G#', Bb: 'A#' }
-const TONES: Record<string, number[]> = { '': [0, 4, 7], m: [0, 3, 7], '7': [0, 4, 7, 10] }
+const SUFFIX = 'maj7|m7|sus2|sus4|dim|aug|m|7'
+const TONES: Record<string, number[]> = { '': [0, 4, 7], m: [0, 3, 7], '7': [0, 4, 7, 10], maj7: [0, 4, 7, 11], m7: [0, 3, 7, 10], sus2: [0, 2, 7], sus4: [0, 5, 7], dim: [0, 3, 6], aug: [0, 4, 8] }
 
 const OPEN: Record<string, [number[], number[]]> = {
   C: [[-1, 3, 2, 0, 1, 0], [0, 3, 2, 0, 1, 0]], D: [[-1, -1, 0, 2, 3, 2], [0, 0, 0, 1, 3, 2]],
@@ -14,10 +15,19 @@ const OPEN: Record<string, [number[], number[]]> = {
   C7: [[-1, 3, 2, 3, 1, 0], [0, 3, 2, 4, 1, 0]], D7: [[-1, -1, 0, 2, 1, 2], [0, 0, 0, 2, 1, 3]],
   E7: [[0, 2, 0, 1, 0, 0], [0, 2, 0, 1, 0, 0]], G7: [[3, 2, 0, 0, 0, 1], [3, 2, 0, 0, 0, 1]],
   A7: [[-1, 0, 2, 0, 2, 0], [0, 0, 2, 0, 3, 0]], B7: [[-1, 2, 1, 2, 0, 2], [0, 2, 1, 3, 0, 4]],
+  Cmaj7: [[-1, 3, 2, 0, 0, 0], [0, 3, 2, 0, 0, 0]], Dmaj7: [[-1, -1, 0, 2, 2, 2], [0, 0, 0, 1, 1, 1]],
+  Emaj7: [[0, 2, 1, 1, 0, 0], [0, 3, 1, 2, 0, 0]], Fmaj7: [[-1, -1, 3, 2, 1, 0], [0, 0, 3, 2, 1, 0]],
+  Gmaj7: [[3, 2, 0, 0, 0, 2], [3, 2, 0, 0, 0, 1]], Amaj7: [[-1, 0, 2, 1, 2, 0], [0, 0, 3, 1, 2, 0]],
+  Am7: [[-1, 0, 2, 0, 1, 0], [0, 0, 2, 0, 1, 0]], Dm7: [[-1, -1, 0, 2, 1, 1], [0, 0, 0, 2, 1, 1]],
+  Em7: [[0, 2, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0]], Bm7: [[-1, 2, 0, 2, 0, 2], [0, 1, 0, 2, 0, 3]],
+  Asus2: [[-1, 0, 2, 2, 0, 0], [0, 0, 1, 2, 0, 0]], Asus4: [[-1, 0, 2, 2, 3, 0], [0, 0, 1, 2, 3, 0]],
+  Dsus2: [[-1, -1, 0, 2, 3, 0], [0, 0, 0, 1, 3, 0]], Dsus4: [[-1, -1, 0, 2, 3, 3], [0, 0, 0, 1, 2, 3]],
+  Esus4: [[0, 2, 2, 2, 0, 0], [0, 2, 3, 4, 0, 0]], Bdim: [[-1, 2, 3, 4, 3, -1], [0, 1, 2, 4, 3, 0]],
+  Caug: [[-1, 3, 2, 1, 1, 0], [0, 4, 3, 1, 2, 0]],
 }
 
 export function normalize(name: string): [string, string] | null {
-  const m = /^([A-G][#b]?)(m|7)?$/.exec(name ?? '')
+  const m = new RegExp(`^([A-G][#b]?)(${SUFFIX})?$`).exec(name ?? '')
   if (!m) return null
   const root = FLATS[m[1]] ?? m[1]
   return NOTES.includes(root) ? [root, m[2] ?? ''] : null
@@ -57,4 +67,12 @@ export function getDiagrams(name: string): Diagram[] {
     }
   }
   return out
+}
+
+/** Posiciones ordenadas para mostrar: con `easyOnly`, primero las abiertas o simplificadas (sin cejilla completa). */
+export function diagramsFor(name: string, easyOnly: boolean): Diagram[] {
+  const ds = getDiagrams(name)
+  if (!easyOnly) return ds
+  const easy = ds.filter((d) => !d.barre || d.label === 'Simplificado')
+  return [...easy, ...ds.filter((d) => !easy.includes(d))]
 }

@@ -17,10 +17,63 @@ Servidores propios: **ninguno**. El audio nunca sale del teléfono. Por segurida
 la escribe cada usuario y queda solo en su dispositivo. El audio de YouTube **no** se extrae ni se analiza; los acordes de un
 archivo propio pueden mostrarse sobre el video con un desfase manual.
 
-## Motor de reconocimiento (v0.4) y limitaciones
+## Motor de reconocimiento v0.5: híbrido IA + croma + HMM (todo en el teléfono)
+1. **Basic Pitch** (Spotify; código y pesos Apache-2.0, `public/models/LICENSE-basic-pitch.txt`; modelo ONNX de 230 KB) estima la
+   probabilidad de cada una de las 88 notas cada ~11,6 ms. Corre en un Web Worker con **onnxruntime-web** (MIT, WASM, 1 hilo); los
+   `.wasm` se copian a `public/ort` al compilar (`scripts/copy-ort.mjs`), así que no se usa ningún CDN ni servidor.
+2. Esas notas se pliegan en un croma de agudos (que se **suma** al croma clásico STFT 90–700 Hz) y un croma de **bajo**.
+3. El bajo apoya la raíz del acorde (o, con peso 0,9, una inversión), pero **solo en los cuadros donde una nota grave domina**: en
+   guitarra arpegiada con bajo alternado casi no pesa; en canciones con bajista, sí.
+4. Tonalidad por acordes (dos pasadas) como bonificación suave + **Viterbi** con más probabilidad de cambio sobre los pulsos.
+5. Si el modelo no carga, el worker usa el **motor clásico v0.4.2** (se conserva completo) y la app lo avisa.
+
+### Resultados (mismos audios y referencias para todos los motores; `tools/`)
+Referencias con tiempos: lo que muestra Chordify en las 2 grabaciones de pantalla del usuario. Cancioneros: sin tiempos (métricas aproximadas).
+«Completo» = raíz + tipo exacto (Am7 ≠ Am); «mayor/menor» = raíz y si es mayor o menor; similitud = notas compartidas (separada de la precisión).
+| Motor | A las nueve: completo | Carta: raíz | Carta: mayor/menor | Carta: completo (avanzados) | Cancioneros: en-partitura / F1 secuencia |
+|---|---|---|---|---|---|
+| v0.3 (app anterior) | 61 % | 27 % | 27 % | 8 % | 90,9 % / 31,6 |
+| clásico v0.4.2 | 93 % | 45 % | 40 % | 2 % | 96,6 % / 61,4 |
+| **híbrido v0.5** | **94 %** | **78 %** | **63 %** | **15 %** | 95,0 % / 58,3 |
+Cambios encontrados (±1 s) y retraso mediano: «A las nueve» 100 % y +34 ms; «Carta» 80 % y +143 ms (v0.4.2: 85 % y +134 ms).
+El híbrido mejora mucho la raíz en la canción con bajo y séptimas rápidas, empata en «A las nueve» y queda apenas por debajo del
+clásico en los 4 cancioneros (guitarra arpegiada). Las séptimas exactas siguen siendo débiles (15 %): bajar la penalización las sube en
+«Carta» (hasta 39 %) pero agrega séptimas falsas en «A las nueve» (de 86 % a 40 %), así que el modo Avanzados quedó conservador.
+Las referencias no traen inversiones, así que la precisión del bajo/inversiones **no se pudo medir**. Seis canciones son pocas: los
+parámetros se eligieron con ellas y pueden no generalizar.
+
+### Alternativas evaluadas con pruebas (y descartadas)
+Ventanas cortas (186/93 ms): más cambios falsos. Sincronizar al pulso con mucha inercia (v0.3): retenía acordes (2 cambios en una
+canción entera). Pegar los cambios al pulso: no mejoró. Restar notas persistentes: +8 puntos en «Carta», −8 a −25 en las demás.
+Bajo con peso fijo: +36 puntos de raíz en «Carta» pero hasta −50 en cancioneros (por eso el peso adaptativo). Solo IA sin croma
+clásico: peor en cancioneros. Tonalidad por perfiles de croma: elegía mal (Re mayor en una canción en Mi menor).
+### Alternativas revisadas sin integrar (licencia/tamaño; no verificadas en esta sesión salvo donde se indica)
+NNLS-Chroma/Chordino (GPL: obligaría a publicar el código de la app; el método se podría reimplementar), madmom (pesos con licencia no
+comercial), modelos de transformador para acordes (requieren convertir pesos de PyTorch, no disponible aquí), separación de fuentes
+(Demucs/Spleeter: decenas de MB y minutos por canción en un teléfono). CQT: no implementado (STFT con corrección de afinación).
+
+### Velocidad, tamaño y equivalencia web/APK: cómo se verifica (y qué NO está verificado)
+- **Tamaño real**: el modelo pesa 230 KB, pero el motor completo incluye los `.wasm` de onnxruntime-web y el código del worker. Al
+  compilar, `scripts/engine-manifest.mjs` mide todos esos archivos y los anota (tamaño + SHA-256) en `engine-manifest.json`; el
+  registro de GitHub Actions muestra el total. Ese número no se pudo medir en esta sesión (sin acceso a npm).
+- **Mismo resultado que la referencia**: el trabajo `motor-ia` de GitHub Actions ejecuta el modelo con onnxruntime-web (el mismo paquete
+  y backend WASM que la app) sobre un acorde de prueba y lo compara con ONNX Runtime nativo (diferencia máxima permitida 0,02).
+  Lo verificado aquí: el audio de prueba y las ventanas en TypeScript dan exactamente los valores de referencia con el runtime nativo.
+- **Web y APK, mismo motor**: ambas se compilan del mismo `dist`. El flujo de la APK extrae los archivos del motor de la APK y comprueba que
+  sus huellas sean idénticas a las de la web; si no, falla.
+- **Velocidad en el teléfono**: no medida. En la app, **Ajustes → «Probar motor de IA en este dispositivo»** carga el modelo, analiza 5 s
+  de un acorde de Do mayor, comprueba que detecte Do-Mi-Sol, mide la velocidad y muestra la huella del motor. Hacela en Chrome y en
+  la APK: si la huella coincide y ambas dicen «FUNCIONA», es el mismo motor; los tiempos dicen cuánto tarda en ese teléfono.
+- Referencia en el servidor de pruebas (no equivale a un teléfono): 1,4 s de modelo por minuto de audio (nativo, 1 hilo).
+
+### Reproducir la medición
+`python3 tools/basic_pitch_notes.py audio.f32 audio.notes` (requiere `pip install onnxruntime numpy`) y luego
+`node --experimental-strip-types tools/eval-hybrid.ts` (referencias Chordify) o `tools/eval-real.ts` (cancioneros, motor clásico).
+
+## Motor clásico (v0.4.2, se usa si el modelo no carga) y limitaciones
 STFT (ventana 8192 = 371 ms, salto 2048 = 93 ms, 22,05 kHz) → cromagrama solo con la banda **90–700 Hz** (donde están las notas
 de la guitarra; deja afuera buena parte de la voz y sus armónicos) con estimación de afinación → filtro de mediana →
-**tonalidad** (Krumhansl–Schmuckler) como bonificación suave → **Viterbi** con estado «N» (silencio). Cada frame se etiqueta por el
+**tonalidad en dos pasadas** (primero acordes sin sesgo; luego la tonalidad cuyos acordes diatónicos cubren más tiempo) como bonificación suave → **Viterbi** con estado «N» (silencio). Cada frame se etiqueta por el
 **centro** de su ventana. Si hay un pulso fiable, cambiar de acorde es más probable **sobre un pulso**, pero ya no se fuerza a la rejilla.
 **Inversiones** (C/E, G/D, Em/B…): solo si un seguimiento del bajo (ventana de 0,74 s, 65–196 Hz) indica la 3ª o la 5ª del acorde
 durante ≥ 0,8 s y hay graves audibles. Vocabularios: **Simples** (mayores y menores, por defecto) y **Avanzados (experimental)**:
@@ -42,6 +95,27 @@ mantiene en 3 de 4 (en «Buenas noches» se elegiría 90–600 Hz, que allí emp
 y **empeoraron** la precisión (más cambios falsos), así que se mantuvo 371 ms con salto de 93 ms.
 Errores típicos que persisten: mayor/menor confundidos (Am leído como A), acordes «de paso» de la voz o del bajo, y C/E o G/D leídos
 como Am o G. El modo Avanzado no mejora a Simples en estas canciones (F1 57,7 vs 61,4).
+### Comparación con Chordify (v0.4.1)
+Grabación de pantalla aportada por el usuario («A las nueve», No Te Va Gustar, 65 s): se extrajo el audio y, de los fotogramas, el
+acorde que muestra Chordify y el instante exacto en que cambia (17 acordes, 16 cambios). Acierto = % del tiempo con el mismo acorde.
+| | v0.1 | v0.3 | v0.4 (tonalidad por perfiles) | v0.4.1 |
+|---|---|---|---|---|
+| Acierto vs Chordify | 71 % | 61 % | 77 % | **94 %** |
+| Cambios encontrados (±1,5 s) | 10/16 | 3/16 | 13/16 | **16/16** |
+El salto de 77 % a 94 % vino de la tonalidad: con perfiles de croma salía «Re mayor» y favorecía La en vez de Lam; por acordes sale
+«Mi menor». Los cambios quedan a ±0,3–0,6 s de los de Chordify (Chordify los ajusta al compás). Ajustar los cambios al pulso se probó
+y no mejoró el acierto, así que está desactivado. Es una sola canción y un fragmento: no garantiza el mismo resultado en otras.
+
+### Segunda comparación con Chordify: «Carta para no llorar» (75 s, acordes de séptima, ~1 cambio por segundo)
+47 acordes de referencia (Cmaj7, Gmaj7, Dm7, G7, Cm7, Bm7, E7, Am7, D7…). Acierto a nivel tríada (Am7 cuenta como Am):
+v0.1 25 %, v0.3 27 %, v0.4.1 35 %, **v0.4.2 39 %**; con la séptima exacta, ≈ 0–12 %. Diagnóstico: aun eligiendo la mejor plantilla
+cuadro a cuadro sin suavizado se llega solo a 38 %: en esta grabación suenan casi siempre D y E por encima de los acordes (melodía o
+tensiones), y los acordes de séptima comparten 3 de 4 notas con otros (Bm7 = D6, E7 ≈ G#dim…). Se probaron, sin éxito o empeorando
+otras canciones: ventanas más cortas, menos suavizado, restar las notas persistentes y darle peso al bajo. El método actual (plantillas
+de croma) funciona bien en pop/rock/folk con acordes de 2–4 s y mal en armonías tipo jazz/bossa rápidas: ahí haría falta un modelo
+entrenado (red neuronal en el navegador, con pesos de licencia compatible), que es un cambio grande.
+v0.4.2 quita el desempate por «primer acorde» (en esta canción, que empieza en el IV, elegía Do mayor); las otras 5 canciones no cambian.
+
 Reproducir la medición: `frontend/tools/eval-real.ts` (instrucciones en el archivo). Límites de archivo: 40 MB y 15 min.
 
 ## ¿Analizar el audio de YouTube en tiempo real? Decisión: no

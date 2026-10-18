@@ -79,3 +79,18 @@ export function medianFilter(frames: Float64Array[], size = 5): Float64Array[] {
   }
   return out
 }
+
+/** Resta el «fondo» armónico: notas que suenan casi todo el tiempo (melodía insistente, pedales, armónicos)
+ *  se atenúan restando alpha × la media local de ±win frames. */
+export function removeBackground(frames: Float64Array[], alpha: number, win: number): Float64Array[] {
+  if (alpha <= 0 || !frames.length) return frames
+  const T = frames.length, cum = new Float64Array((T + 1) * 12)
+  const norm = frames.map((f) => { const n = Math.hypot(...f) || 1; return f.map((v) => v / n) })
+  for (let t = 0; t < T; t++) for (let c = 0; c < 12; c++) cum[(t + 1) * 12 + c] = cum[t * 12 + c] + norm[t][c]
+  return frames.map((f, t) => {
+    const a = Math.max(0, t - win), b = Math.min(T, t + win + 1), n = Math.hypot(...f) || 1
+    const out = new Float64Array(12)
+    for (let c = 0; c < 12; c++) out[c] = Math.max(0, f[c] / n - (alpha * (cum[b * 12 + c] - cum[a * 12 + c])) / (b - a)) * n
+    return out
+  })
+}

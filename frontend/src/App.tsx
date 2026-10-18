@@ -13,13 +13,13 @@ import { moveEnd, moveStart, removeAt, setChordAt, splitAt } from './lib/segment
 import { beatPosition } from './lib/engine/beats.ts'
 import { validateAudioFile } from './lib/audioFile.ts'
 import { decodeToMono } from './lib/decodeAudio.ts'
-import { CANCELLED, startAnalysis } from './lib/engine/runWorker.ts'
+import { CANCELLED, runSelfTest, startAnalysis } from './lib/engine/runWorker.ts'
 import { deleteSong, listSongs, requestPersistence, saveSong } from './lib/songs.ts'
 import type { Song } from './lib/songs.ts'
 import type { Segment } from './lib/types.ts'
 
 type Source = 'none' | 'demo' | 'analysis'
-const APP_VERSION = '0.4.0'
+const APP_VERSION = '0.5.1'
 const YT_RATES = [0.5, 0.75, 1, 1.25]
 const AUDIO_RATES = [0.5, 0.6, 0.75, 0.9, 1, 1.25]
 const CHORD_OK = /^(N|[A-G][#b]?(maj7|m7|sus2|sus4|dim|aug|m|7)?)$/
@@ -71,6 +71,8 @@ export default function App() {
   const [focusIdx, setFocusIdx] = useState<number | null>(null)
   const [dark, setDark] = useState(() => store.get('dark', window.matchMedia('(prefers-color-scheme: dark)').matches))
   const [settings, setSettings] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testReport, setTestReport] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(true) // se cierra al elegir un video; la lupa lo reabre
   const [easyOnly, setEasyOnly] = useState(() => store.get('easyOnly', false))
   const [recent, setRecent] = useState(() => store.get<{ id: string; title: string }[]>('recent', []))
@@ -165,6 +167,7 @@ export default function App() {
       songRef.current = s; setSong(s)
       setBase(s.original); setUndo([]); setSource('analysis'); setTranspose(0); setCapo(0); setAdvanced(false); setOffset(0); setFocusIdx(null)
       await saveSong(s); void refreshSongs()
+      if (out.warning) setNotice(out.warning)
     } catch (e) {
       const m = (e as Error).message
       if (m === CANCELLED) setNotice('Análisis cancelado.'); else setJobErr(m)
@@ -237,6 +240,26 @@ export default function App() {
             <label className="flex items-center gap-2"><input type="checkbox" checked={dark} onChange={(e) => setDark(e.target.checked)} /> Tema oscuro</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={easyOnly} onChange={(e) => setEasyOnly(e.target.checked)} /> Priorizar posiciones sin cejilla completa</label>
             <p className="w-full text-xs text-mute">Versión {APP_VERSION}</p>
+            <div className="w-full space-y-1">
+              <button className={small} disabled={testing} onClick={async () => {
+                setTesting(true); setTestReport(null)
+                try {
+                  const r = await runSelfTest()
+                  const est = (min: number) => Math.round(r.secPerAudioMinute * min)
+                  setTestReport([
+                    r.ok ? 'Motor de IA: FUNCIONA en este dispositivo (detectó Do-Mi-Sol).' : `Motor de IA: FALLÓ${r.error ? ` (${r.error})` : ''}. Detectó: ${r.foundPitchClasses.join(' ') || 'nada'}. La app usará el motor clásico.`,
+                    r.ok ? `Carga del modelo: ${(r.loadMs / 1000).toFixed(1)} s · ${Math.round(r.msPerWindow)} ms por ventana · ≈ ${r.secPerAudioMinute.toFixed(1)} s por minuto de audio (canción de 3 min ≈ ${est(3)} s + análisis).` : '',
+                    `WASM SIMD: ${r.simd ? 'sí' : 'no'} · núcleos: ${r.cores ?? '?'} · memoria: ${r.memoryGB ?? '?'} GB`,
+                    `Navegador: ${r.userAgent}`,
+                    `Huella del motor (debe ser igual en la web y en la APK): ${r.manifest.replace(/\s+/g, ' ').slice(0, 400)}`,
+                  ].filter(Boolean).join('\n'))
+                } catch (e) { setTestReport(`No se pudo ejecutar la prueba: ${(e as Error).message}`) } finally { setTesting(false) }
+              }}>{testing ? 'Probando…' : 'Probar motor de IA en este dispositivo'}</button>
+              {testReport && <>
+                <pre className="whitespace-pre-wrap break-words rounded-lg bg-panel p-2 text-xs">{testReport}</pre>
+                <button className={small} onClick={() => navigator.clipboard?.writeText(testReport).catch(() => undefined)}>Copiar resultados</button>
+              </>}
+            </div>
             <label className="w-full">Clave propia de YouTube Data API v3 (opcional, solo para buscar; se guarda solo en este teléfono)
               <input value={ytKey} onChange={(e) => setYtKey(e.target.value.trim())} autoComplete="off" className="mt-1 min-h-11 w-full rounded-lg border border-line bg-panel px-3" /></label>
           </div>

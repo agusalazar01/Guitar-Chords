@@ -32,6 +32,8 @@ export interface DecodeOptions {
   prior?: Float64Array | null // bonificación por acorde (p. ej. tonalidad)
   bass?: Float64Array[] | null; bassWeight?: number // cromagrama de graves: apoya la raíz del acorde
   triadsOnly?: boolean; extPenalty?: number // vocabulario y penalización de acordes extendidos
+  bassWeightAt?: Float64Array | null // peso del bajo por cuadro (0–1, multiplica bassWeight); p. ej. según qué tan clara es la nota grave
+  bassTones?: number // 0: solo la raíz en el bajo apoya el acorde; λ>0: otra nota del acorde en el bajo (inversión) apoya con peso λ
   bassGate?: boolean // true: el peso del bajo se atenúa si hay pocos graves; false: el bajo ya viene normalizado
   stayAt?: Float64Array | null // prob. de mantener el acorde al entrar en cada frame (más baja sobre los pulsos)
 }
@@ -43,7 +45,7 @@ export function decodeChords(frames: Float64Array[], hopSeconds: number, o: Deco
 
 /** times[i]..times[i+1] = intervalo del frame i (admite intervalos irregulares, p. ej. pulsos). */
 export function decodeTimed(frames: Float64Array[], times: number[], o: DecodeOptions = {}): Segment[] {
-  const { stay = 0.995, beta = 12, silenceRatio = 0.12, minDuration = 0.3, prior = null, bass = null, bassWeight = 0, triadsOnly = false, extPenalty = 1.5, stayAt = null, bassGate = true } = o
+  const { stay = 0.995, beta = 12, silenceRatio = 0.12, minDuration = 0.3, prior = null, bass = null, bassWeight = 0, triadsOnly = false, extPenalty = 1.5, stayAt = null, bassGate = true, bassTones = 0, bassWeightAt = null } = o
   const nq = triadsOnly ? 2 : QUALITIES.length
   const T = frames.length
   if (T === 0) return []
@@ -62,13 +64,19 @@ export function decodeTimed(frames: Float64Array[], times: number[], o: DecodeOp
     let bmax = 0, bsum = 0, fsum = 0
     if (bass) for (let i = 0; i < 12; i++) { bmax = Math.max(bmax, bass[t][i]); bsum += bass[t][i]; fsum += frames[t][i] }
     // el apoyo del bajo solo cuenta si hay graves audibles frente al resto del espectro
-    const bw = !bass ? 0 : bassGate ? (fsum > 0 ? bassWeight * Math.min(1, bsum / (0.35 * fsum)) : 0) : (bsum > 0 ? bassWeight : 0)
+    const bw0 = !bass ? 0 : bassGate ? (fsum > 0 ? bassWeight * Math.min(1, bsum / (0.35 * fsum)) : 0) : (bsum > 0 ? bassWeight : 0)
+    const bw = bassWeightAt ? bw0 * bassWeightAt[t] : bw0
     for (let s = 0; s < nc; s++) {
       let d = 0
       for (let i = 0; i < 12; i++) d += tpl[s][i] * frames[t][i]
       const c = Math.min(1, Math.max(0, d / nrm))
       sim[t * nc + s] = c
-      score[t * nc + s] = bass && bmax > 0 ? (1 - bw) * c + bw * (bass[t][Math.floor(s / nq)] / bmax) : c
+      let bv = 0
+      if (bass && bmax > 0) {
+        bv = bass[t][Math.floor(s / nq)] / bmax
+        if (bassTones > 0) for (let i = 0; i < 12; i++) if (tpl[s][i] > 0) bv = Math.max(bv, (bassTones * bass[t][i]) / bmax)
+      }
+      score[t * nc + s] = bass && bmax > 0 ? (1 - bw) * c + bw * bv : c
     }
   }
   const emis = (t: number, out: Float64Array) => {

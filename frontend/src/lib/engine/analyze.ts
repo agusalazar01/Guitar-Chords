@@ -1,20 +1,23 @@
 import type { Segment } from '../types.ts'
 import { bassTrack, type BassTrack } from './bass.ts'
 import { estimateDownbeat, onsetEnvelope, trackBeats } from './beats.ts'
-import { computeChroma, computeSpectra, foldChroma, frameCenter, medianFilter } from './chroma.ts'
+import { computeChroma, computeSpectra, foldChroma, frameCenter, medianFilter, removeBackground } from './chroma.ts'
 import { NOTES, QUALITIES, decodeChords, decodeTimed } from './decode.ts'
-import { estimateKey, keyPrior } from './key.ts'
+import { estimateKey, keyFromChords, keyPrior, profileScores } from './key.ts'
+import { NMETHOD, NPARAMS, analyzeNotes, fuseFeatures, resample } from './analyzeNotes.ts'
+import { noteChroma } from './notes.ts'
 
-export const METHOD = 'stft-chroma-pulso-tonalidad-v0.4 (en el dispositivo)'
+export const METHOD = 'stft-chroma-pulso-tonalidad-v0.4.2 (en el dispositivo)'
 export interface AnalysisOutput {
   method: string; duration: number; segments: Segment[]; tuning: number
   beats: number[]; bpm: number | null; downbeat: number; beatsPerBar: number; key: string | null
   advanced: Segment[] // vocabulario extendido (7, maj7, m7, sus, dim, aug, 6, add9, 9): experimental
+  warning?: string // p. ej. «no se pudo usar el modelo de IA»
 }
 /** Parámetros elegidos con 4 canciones reales (ver README). offStay/onStay: probabilidad de mantener el acorde fuera/sobre un pulso. */
 export const PARAMS = {
   keyBonus: 0.75, offStay: 0.99, onStay: 0.9, extPenalty: 1.2, minBeatStrength: 0.25,
-  bassWeight: 0, chromaMin: 90, chromaMax: 700, inversionShare: 0.6, inversionMinSec: 0.8, inversionMinLow: 0.05,
+  bassWeight: 0, chromaMin: 90, chromaMax: 700, median: 5, bgAlpha: 0, bgWinSec: 6, inversionShare: 0.6, inversionMinSec: 0.8, inversionMinLow: 0.05, keyFromChords: true, keyProfileWeight: 0, snapToBeat: 0,
 }
 
 /** Motor v0.1 (sin tonalidad, pulso ni bajo). Se conserva para medir mejoras. */
@@ -58,7 +61,7 @@ function bassFrames(bt: BassTrack, centers: number[]): Float64Array[] {
 export function analyzeSamples(samples: Float32Array, sampleRate: number, onProgress?: (p: number) => void): AnalysisOutput {
   if (samples.length < sampleRate) throw new Error('El audio es demasiado corto para analizarlo (menos de 1 s).')
   const sp = computeSpectra(samples, sampleRate, onProgress)
-  const chroma = medianFilter(foldChroma(sp, PARAMS.chromaMin, PARAMS.chromaMax), 5)
+  const chroma = medianFilter(removeBackground(foldChroma(sp, PARAMS.chromaMin, PARAMS.chromaMax), PARAMS.bgAlpha, Math.round(PARAMS.bgWinSec / (sp.hop / sampleRate))), PARAMS.median)
   const centers = chroma.map((_, t) => frameCenter(sp, t))
   onProgress?.(0.45)
   const duration = samples.length / sampleRate
@@ -84,12 +87,26 @@ export function analyzeSamples(samples: Float32Array, sampleRate: number, onProg
       stayAt[Math.max(1, lo)] = PARAMS.onStay
     }
   }
-  const key = estimateKey(chroma)
+  // Tonalidad en dos pasadas: acordes sin sesgo → tonalidad que mejor los explica (si falla, perfiles de croma).
+  const decode0 = decodeTimed(chroma, times, { triadsOnly: true, stay: 0.995, stayAt })
+  const key = PARAMS.keyFromChords ? (keyFromChords(decode0, profileScores(chroma), PARAMS.keyProfileWeight) ?? estimateKey(chroma)) : estimateKey(chroma)
   const bass = PARAMS.bassWeight > 0 ? bassFrames(bt, centers) : null
-  const run = (triadsOnly: boolean): Segment[] => addInversions(decodeTimed(chroma, times, {
+  const run = (triadsOnly: boolean): Segment[] => snap(addInversions(decodeTimed(chroma, times, {
     prior: keyPrior(key, PARAMS.keyBonus, triadsOnly ? 2 : QUALITIES.length), bass, bassWeight: PARAMS.bassWeight, bassGate: false,
     triadsOnly, extPenalty: PARAMS.extPenalty, stay: 0.995, stayAt,
-  }), bt)
+  }), bt))
+  const snap = (segs: Segment[]): Segment[] => {
+    if (!usable || PARAMS.snapToBeat <= 0) return segs
+    const grid: number[] = []
+    for (let i = 0; i < tr.beats.length; i++) { grid.push(tr.beats[i]); if (i + 1 < tr.beats.length) grid.push((tr.beats[i] + tr.beats[i + 1]) / 2) }
+    const out = segs.map((x) => ({ ...x }))
+    for (let i = 1; i < out.length; i++) {
+      let g = grid[0]
+      for (const v of grid) if (Math.abs(v - out[i].start) < Math.abs(g - out[i].start)) g = v
+      if (Math.abs(g - out[i].start) <= PARAMS.snapToBeat && g > out[i - 1].start + 0.1 && g < out[i].end - 0.1) { out[i].start = Math.round(g * 1000) / 1000; out[i - 1].end = out[i].start }
+    }
+    return out
+  }
   const segments = run(true) // por defecto: mayores y menores (lo que mejor funciona en las mediciones)
   const advanced = run(false)
 
@@ -106,5 +123,28 @@ export function analyzeSamples(samples: Float32Array, sampleRate: number, onProg
   return {
     method: METHOD, duration, segments, advanced, tuning: sp.tuning, key: key ? key.name : null,
     beats: usable ? tr.beats : [], bpm: usable ? tr.bpm : null, downbeat, beatsPerBar: 4,
+  }
+}
+
+/** Motor híbrido (v0.5): croma clásico (90–700 Hz) + croma de notas de Basic Pitch, bajo de Basic Pitch con peso según su claridad.
+ *  `rows`: salida de notas de Basic Pitch ya unida (una fila de 88 probabilidades cada ~11,6 ms). */
+export function analyzeHybrid(samples: Float32Array, sampleRate: number, rows: Float32Array[], onProgress?: (p: number) => void): AnalysisOutput {
+  if (samples.length < sampleRate) throw new Error('El audio es demasiado corto para analizarlo (menos de 1 s).')
+  const sp = computeSpectra(samples, sampleRate)
+  const chroma = medianFilter(foldChroma(sp, PARAMS.chromaMin, PARAMS.chromaMax), PARAMS.median)
+  const centers = chroma.map((_, t) => frameCenter(sp, t))
+  onProgress?.(0.5)
+  const ons = onsetEnvelope(samples, sampleRate)
+  const tr = trackBeats(ons.env, ons.hopSec, ons.offsetSec)
+  const usable = tr.beats.length >= 8 && tr.strength > PARAMS.minBeatStrength && tr.bpm !== null
+  onProgress?.(0.8)
+  const bp = noteChroma(rows)
+  const f = { treble: fuseFeatures(chroma, centers, bp.treble, bp.centers, NPARAMS.fuseWeight), bass: resample(bp.bass, bp.centers, centers), centers, hopSec: sp.hop / sampleRate }
+  const duration = samples.length / sampleRate
+  const r = analyzeNotes(f, duration, { ...tr, usable })
+  onProgress?.(1)
+  return {
+    method: NMETHOD, duration, segments: r.segments, advanced: r.advanced, tuning: sp.tuning, key: r.key,
+    beats: usable ? tr.beats : [], bpm: usable ? tr.bpm : null, downbeat: r.downbeat, beatsPerBar: 4,
   }
 }

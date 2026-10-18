@@ -22,6 +22,18 @@ jobs:
           npm run build
       - uses: actions/upload-pages-artifact@v3
         with: { path: frontend/dist }
+  motor-ia:
+    # Ejecuta el modelo con onnxruntime-web (mismo paquete y backend WASM que la app) y lo compara con la referencia nativa.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Verificar el motor de IA
+        working-directory: frontend
+        run: |
+          npm install
+          npm run check-model
   deploy:
     needs: build
     runs-on: ubuntu-latest

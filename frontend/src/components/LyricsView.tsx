@@ -12,6 +12,7 @@ export default function LyricsView({ lyrics, time, offset, anchors, onAdjust, on
   onAdjust: (a: { offset?: number; anchors?: LyricAnchor[] }) => void; onSeek: (t: number) => void; onRemove: () => void
 }) {
   const [full, setFull] = useState(false)
+  const [tools, setTools] = useState(false) // ajustes de la letra, ocultos para que se vea la letra
   const lines = lyrics.synced
   const lt = lyricTime(time, anchors, offset)
   const idx = lines ? activeLine(lines, lt) : -1
@@ -19,24 +20,25 @@ export default function LyricsView({ lyrics, time, offset, anchors, onAdjust, on
   const activeRef = useRef<HTMLLIElement>(null)
   useEffect(() => { if (full) activeRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }, [idx, full])
   const small = 'min-h-9 rounded-lg border border-line px-2 text-xs'
-  const cur = lines && idx >= 0 ? lines[idx].text : '', next = lines ? lines.slice(idx + 1).find((l) => l.text)?.text ?? '' : ''
+  const cur = lines && idx >= 0 ? lines[idx].text : ''
+  const upcoming = lines ? lines.slice(idx + 1).filter((l) => l.text).slice(0, 2).map((l) => l.text) : []
   const nextLine = lines ? lines.slice(idx + 1).find((l) => l.text) : undefined
   const round = (x: number) => Math.round(x * 100) / 100
   const intro = !!first && lt < first.t
   const adjusted = anchors.length > 0 || offset !== 0
   return (
-    <section className="rounded-2xl border border-line bg-panel p-3" aria-label="Letra">
+    <section className="py-1" aria-label="Letra">
       {lines ? (
         intro ? (
           <div>
-            <p className="text-sm text-mute">♪ Intro · la letra empieza en {mmss(audioTime(first.t, anchors, offset))}{adjusted ? ' (ajustada)' : ''}</p>
-            <p className="min-h-5 text-sm text-mute">{first.text}</p>
+            <p className="text-base text-mute">♪ Intro · la letra empieza en {mmss(audioTime(first.t, anchors, offset))}{adjusted ? ' (ajustada)' : ''}</p>
+            <p className="mt-1 text-lg text-mute">{first.text}</p>
             <button className="mt-1 min-h-10 rounded-lg bg-accent px-3 text-sm font-semibold text-accent-fg" onClick={() => onAdjust({ anchors: addAnchor(anchors, first.t, time - offset) })}>Empezó a cantar</button>
           </div>
         ) : (
           <div aria-live="off">
-            <p className="min-h-7 text-lg font-bold leading-snug">{cur || <span className="text-mute">♪</span>}</p>
-            <p className="min-h-5 text-sm text-mute">{next}</p>
+            <p className="min-h-9 text-2xl font-bold leading-snug">{cur || <span className="text-mute">♪</span>}</p>
+            {upcoming.map((t, i) => <p key={i} className={`leading-snug text-mute ${i === 0 ? 'text-lg' : 'text-base opacity-70'}`}>{t}</p>)}
           </div>
         )
       ) : <p className="text-sm text-mute">Esta letra no tiene tiempos: se muestra completa.</p>}
@@ -51,6 +53,9 @@ export default function LyricsView({ lyrics, time, offset, anchors, onAdjust, on
       )}
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-mute">
         <span className="min-w-0 flex-1 truncate">{lyrics.trackName} · {lyrics.artistName}{lyrics.source === 'lrclib' ? ' · letra de LRCLIB' : ''}</span>
+        <button className={small} onClick={() => setTools((x) => !x)} aria-expanded={tools} aria-label="Ajustes de la letra">{tools ? 'Listo' : '⚙ Letra'}</button>
+      </div>
+      {tools && <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-mute">
         {lines && <>
           <button className={small} onClick={() => setFull((f) => !f)}>{full ? 'Ocultar letra' : 'Ver toda'}</button>
           <button className={small} onClick={() => onAdjust({ offset: round(offset - 0.25) })} aria-label="Letra antes">−¼ s</button>
@@ -60,7 +65,7 @@ export default function LyricsView({ lyrics, time, offset, anchors, onAdjust, on
           {adjusted && <button className={small} onClick={() => onAdjust({ offset: 0, anchors: [] })}>Quitar ajustes</button>}
         </>}
         <button className={small} onClick={onRemove}>Quitar letra</button>
-      </div>
+      </div>}
     </section>
   )
 }

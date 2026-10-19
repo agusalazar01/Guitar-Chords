@@ -1,14 +1,14 @@
 /** Almacenamiento local persistente (IndexedDB): canciones, acordes originales y corregidos, ajustes y el audio. */
 import type { Segment } from './types.ts'
 import type { LyricAnchor, SongLyrics } from './lyrics.ts'
-import type { ChordEvent } from './cifrado.ts'
+import type { ChordEvent, CifradoLine } from './cifrado.ts'
 
 export interface SongSettings { videoId: string | null; transpose: number; offset: number; capo?: number; advanced?: boolean; simplified?: boolean }
 export interface Song {
   id: string; filename: string; createdAt: number; duration: number; method: string; lowConfidence: boolean
   original: Segment[]; corrections: Segment[] | null; settings: SongSettings; audio: Blob | null // null = acordes marcados a mano sobre un video (sin audio)
   kind?: 'analysis' | 'manual' | 'cifrado' // cifrado = acordes de un cancionero ubicados con la letra
-  cifrado?: { events: ChordEvent[] } // acordes del cifrado en el tiempo de la letra (se recalculan al ajustar la letra)
+  cifrado?: { events: ChordEvent[]; lines?: CifradoLine[] } // acordes del cifrado en el tiempo de la letra (se recalculan al ajustar la letra)
   order?: number // posición en «Mi cancionero» (menor = más arriba)
   lyrics?: SongLyrics | null; lyricsOffset?: number // letra (LRCLIB o propia) y su corrimiento en segundos
   lyricsAnchors?: LyricAnchor[] // puntos «esta línea empieza acá» marcados por el usuario (ajustan intro y versiones más lentas o rápidas)

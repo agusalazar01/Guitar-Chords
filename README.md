@@ -5,6 +5,15 @@ propio teléfono** y los muestra con la reproducción (archivo o video de YouTub
 edición. No hay servidor propio ni cuentas. (El identificador interno de la APK sigue siendo `app.guitarchords` para conservar las
 canciones ya guardadas; el repositorio mantiene su nombre.)
 
+## Cambios de la v0.7.1
+- **Letra**: se busca primero con el título del video y después con lo que escribiste; si LRCLIB falla, reintenta; si no la encuentra
+  aparece «No encontré la letra · Buscar la letra». Si la letra llega después de importar el cifrado, los acordes se reubican solos.
+- **Pantalla más limpia**: arriba el buscador, abajo el video; en el medio solo el **compás**, los **acordes** y la **letra** grande
+  (línea actual + las dos siguientes; los ajustes de la letra quedan detrás de «⚙ Letra»). Todo lo demás (transponer, cejilla,
+  acordes simplificados, cambiar acordes, analizar mi audio, editar, demostración) está en **«⋯ Opciones»**.
+- **Acordes completos siempre por defecto**; «Acordes simplificados» es una casilla en Opciones (vale también para los del cancionero).
+- **Compás para canciones sin audio analizado**: se estima el pulso a partir de los cambios de acorde (marcado como estimado).
+
 ## Novedades de la v0.7.0: buscar una canción y tenerla lista (sin descargar nada)
 **En la APK**, escribís el nombre en la lupa y:
 1. Se abre **la búsqueda de YouTube dentro de la app** (versión móvil, sin cuenta ni clave). Tocás el video y la app lo toma sola

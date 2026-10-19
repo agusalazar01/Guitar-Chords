@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { searchVideos } from '../lib/youtubeSearch.ts'
 import { parseYouTubeId } from '../lib/youtube.ts'
 import type { Song } from '../lib/songs.ts'
@@ -13,9 +13,10 @@ const fmtDur = (d: number | null) => (d ? `${Math.floor(d / 60)}:${String(Math.r
 
 /** Buscador único: por nombre busca la canción y su letra (LRCLIB, sin clave) y videos de YouTube (en la app con clave propia;
  *  sin clave, abre YouTube con la búsqueda hecha y el video vuelve con «Compartir → Mi Cancionero» en la APK, o pegando el enlace). */
-export function SearchPanel({ onPick, onLyrics, onVideoSearch, recent, apiKey }: {
+export function SearchPanel({ onPick, onLyrics, onVideoSearch, recent, apiKey, lyricsQuery }: {
   onPick: (v: { id: string; title?: string }) => void; onLyrics: (r: LyricResult) => void
   onVideoSearch?: (q: string) => void // APK: abre la búsqueda de YouTube dentro de la app
+  lyricsQuery?: string // si viene, busca solo la letra con este texto al abrirse
   recent: { id: string; title: string }[]; apiKey: string
 }) {
   const [q, setQ] = useState('')
@@ -42,6 +43,7 @@ export function SearchPanel({ onPick, onLyrics, onVideoSearch, recent, apiKey }:
     ])
     setBusy(false)
   }
+  useEffect(() => { if (lyricsQuery) { setQ(lyricsQuery); void run(lyricsQuery) } }, [lyricsQuery]) // eslint-disable-line react-hooks/exhaustive-deps
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     const id = parseYouTubeId(q)

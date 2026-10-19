@@ -32,28 +32,33 @@ for (const [name, type] of [['Chromium (Chrome / WebView de Android)', chromium]
   const search = page.getByPlaceholder('Canción, artista o enlace de YouTube')
   const pick = async () => { await search.fill('https://www.youtube.com/watch?v=dQw4w9WgXcQ'); await search.press('Enter') }
   await step('elegir un video por enlace', pick)
-  await step('abrir «Marcar los acordes de este video»', () => page.getByRole('button', { name: 'Marcar los acordes de este video' }).click({ timeout: 10000 }))
+  await step('abrir «Marcar a mano»', () => page.getByRole('button', { name: 'Marcar a mano' }).first().click({ timeout: 10000 }))
   await step('marcar un acorde (C)', () => page.getByRole('button', { name: 'C', exact: true }).first().click({ timeout: 10000 }))
-  await step('aparece la canción marcada y queda en «Mi cancionero»', async () => {
-    await page.getByText('acordes marcados a mano sobre el video').first().waitFor({ timeout: 10000 })
+  await step('aparecen los acordes y la canción queda en «Mi cancionero»', async () => {
+    await page.getByLabel('Secuencia de acordes').waitFor({ timeout: 10000 })
     await page.getByRole('button', { name: 'Abrir Mi cancionero' }).click()
     await page.getByRole('dialog', { name: 'Mi cancionero' }).getByText('acordes marcados').first().waitFor({ timeout: 10000 })
     await page.getByRole('button', { name: 'Cerrar' }).click()
   })
   await step('«+ Nueva» vuelve al inicio sin recargar', async () => {
     await page.getByRole('button', { name: '+ Nueva', exact: true }).click()
-    await page.getByText('Todavía no hay acordes').waitFor({ timeout: 10000 })
+    await page.getByText('Buscá una canción o elegí un MP3/WAV para empezar.').waitFor({ timeout: 10000 })
   })
   await step('al volver a elegir el video, sus acordes se abren solos', async () => {
-    await pick(); await page.getByText('acordes marcados a mano sobre el video').first().waitFor({ timeout: 10000 })
+    await pick(); await page.getByLabel('Secuencia de acordes').waitFor({ timeout: 10000 })
+  })
+  await step('las opciones están ocultas hasta tocar «⋯ Opciones»', async () => {
+    if (await page.getByText('Transponer').count()) throw new Error('las opciones se ven sin abrirlas')
+    await page.getByRole('button', { name: '⋯ Opciones' }).click()
+    await page.getByText('Transponer').first().waitFor({ timeout: 5000 })
+    await page.getByRole('button', { name: 'Ocultar opciones' }).click()
   })
   await step('pegar un cifrado crea acordes para el video', async () => {
-    await page.getByRole('button', { name: '+ Nueva', exact: true }).click()
-    await pick()
+    await page.getByRole('button', { name: '⋯ Opciones' }).click()
     await page.getByRole('button', { name: 'Pegar cifrado' }).first().click({ timeout: 10000 })
     await page.getByLabel('Cifrado').fill('Am          G\nPrimera línea de prueba\nF           E\nSegunda línea de prueba')
     await page.getByRole('button', { name: 'Usar estos acordes' }).click()
-    await page.getByText('acordes del cancionero').first().waitFor({ timeout: 10000 })
+    await page.getByLabel(/^Am \d+,/).first().waitFor({ timeout: 10000 })
   })
   // Letras (LRCLIB) desde el navegador: si falla, la web no puede consultar LRCLIB (CORS); la APK usa la capa nativa y no depende de esto.
   try {

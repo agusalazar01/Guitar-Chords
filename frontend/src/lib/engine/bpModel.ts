@@ -1,5 +1,7 @@
 /** Basic Pitch (Spotify, Apache-2.0) ejecutado en el dispositivo con onnxruntime-web (WASM, sin Internet una vez instalada). */
-import * as ort from 'onnxruntime-web'
+// «onnxruntime-web/wasm»: solo el backend WebAssembly. La entrada por defecto («onnxruntime-web») incluye WebGPU/JSEP y pide
+// ort-wasm-simd-threaded.jsep.mjs, que no se copia a public/ort → «Importing a module script failed» (fallo visto en v0.5.1).
+import * as ort from 'onnxruntime-web/wasm'
 import { BP, bpUnwrap, bpWindow, bpWindowCount } from './notes.ts'
 
 let session: ort.InferenceSession | null = null
@@ -8,6 +10,12 @@ async function load(base: string): Promise<ort.InferenceSession> {
   if (session) return session
   ort.env.wasm.wasmPaths = `${base}ort/`
   ort.env.wasm.numThreads = 1 // sin aislamiento entre orígenes no hay hilos compartidos
+  ort.env.wasm.proxy = false
+  // Comprobación previa con un mensaje claro si falta algún archivo del motor
+  for (const f of ['ort/ort-wasm-simd-threaded.mjs', 'ort/ort-wasm-simd-threaded.wasm']) {
+    const r = await fetch(`${base}${f}`, { method: 'HEAD' }).catch(() => null)
+    if (!r || !r.ok) throw new Error(`falta ${f} (${r ? r.status : 'sin conexión'})`)
+  }
   const res = await fetch(`${base}models/basic-pitch-nmp.onnx`)
   if (!res.ok) throw new Error(`no se encontró el modelo (${res.status})`)
   session = await ort.InferenceSession.create(new Uint8Array(await res.arrayBuffer()), { executionProviders: ['wasm'] })

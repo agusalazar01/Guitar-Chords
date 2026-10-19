@@ -93,7 +93,7 @@ export function analyzeSamples(samples: Float32Array, sampleRate: number, onProg
   const bass = PARAMS.bassWeight > 0 ? bassFrames(bt, centers) : null
   const run = (triadsOnly: boolean): Segment[] => snap(addInversions(decodeTimed(chroma, times, {
     prior: keyPrior(key, PARAMS.keyBonus, triadsOnly ? 2 : QUALITIES.length), bass, bassWeight: PARAMS.bassWeight, bassGate: false,
-    triadsOnly, extPenalty: PARAMS.extPenalty, stay: 0.995, stayAt,
+    triadsOnly, extPenalty: PARAMS.extPenalty, rarePenalty: 0.5, stay: 0.995, stayAt,
   }), bt))
   const snap = (segs: Segment[]): Segment[] => {
     if (!usable || PARAMS.snapToBeat <= 0) return segs

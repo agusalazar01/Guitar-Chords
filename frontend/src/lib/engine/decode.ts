@@ -3,28 +3,28 @@ import type { Segment } from '../types.ts'
 
 export const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 
-export interface QualityDef { suffix: string; iv: number[]; ext: boolean }
+export interface QualityDef { suffix: string; iv: number[]; ext: boolean; rare?: boolean }
 /** Los dos primeros son tríadas; el resto son "extendidos" y pagan una penalización (deben ganar con evidencia clara). */
 export const QUALITIES: QualityDef[] = [
   { suffix: '', iv: [0, 4, 7], ext: false }, { suffix: 'm', iv: [0, 3, 7], ext: false },
   { suffix: '7', iv: [0, 4, 7, 10], ext: true }, { suffix: 'maj7', iv: [0, 4, 7, 11], ext: true },
   { suffix: 'm7', iv: [0, 3, 7, 10], ext: true }, { suffix: 'sus2', iv: [0, 2, 7], ext: true },
   { suffix: 'sus4', iv: [0, 5, 7], ext: true }, { suffix: 'dim', iv: [0, 3, 6], ext: true }, { suffix: 'aug', iv: [0, 4, 8], ext: true },
-  { suffix: '6', iv: [0, 4, 7, 9], ext: true }, { suffix: 'add9', iv: [0, 2, 4, 7], ext: true }, { suffix: '9', iv: [0, 2, 4, 7, 10], ext: true },
+  { suffix: '6', iv: [0, 4, 7, 9], ext: true, rare: true }, { suffix: 'add9', iv: [0, 2, 4, 7], ext: true, rare: true }, { suffix: '9', iv: [0, 2, 4, 7, 10], ext: true, rare: true },
 ]
 export const Q = { maj: 0, min: 1, dom7: 2, maj7: 3, min7: 4, sus2: 5, sus4: 6, dim: 7, aug: 8, six: 9, add9: 10, nine: 11 }
 
 /** Estado = raíz * nq + calidad. */
-export function buildTemplates(nq = QUALITIES.length): { names: string[]; tpl: Float64Array[]; ext: boolean[] } {
-  const names: string[] = [], tpl: Float64Array[] = [], ext: boolean[] = []
+export function buildTemplates(nq = QUALITIES.length): { names: string[]; tpl: Float64Array[]; ext: boolean[]; rare: boolean[] } {
+  const names: string[] = [], tpl: Float64Array[] = [], ext: boolean[] = [], rare: boolean[] = []
   for (let root = 0; root < 12; root++) {
     for (let q = 0; q < nq; q++) {
       const v = new Float64Array(12)
       for (const i of QUALITIES[q].iv) v[(root + i) % 12] = 1 / Math.sqrt(QUALITIES[q].iv.length)
-      names.push(NOTES[root] + QUALITIES[q].suffix); tpl.push(v); ext.push(QUALITIES[q].ext)
+      names.push(NOTES[root] + QUALITIES[q].suffix); tpl.push(v); ext.push(QUALITIES[q].ext); rare.push(!!QUALITIES[q].rare)
     }
   }
-  return { names, tpl, ext }
+  return { names, tpl, ext, rare }
 }
 
 export interface DecodeOptions {
@@ -32,6 +32,7 @@ export interface DecodeOptions {
   prior?: Float64Array | null // bonificación por acorde (p. ej. tonalidad)
   bass?: Float64Array[] | null; bassWeight?: number // cromagrama de graves: apoya la raíz del acorde
   triadsOnly?: boolean; extPenalty?: number // vocabulario y penalización de acordes extendidos
+  rarePenalty?: number // penalización adicional para 6, add9 y 9 (una nota de la melodía basta para fabricarlos: B7 → B9)
   bassWeightAt?: Float64Array | null // peso del bajo por cuadro (0–1, multiplica bassWeight); p. ej. según qué tan clara es la nota grave
   bassTones?: number // 0: solo la raíz en el bajo apoya el acorde; λ>0: otra nota del acorde en el bajo (inversión) apoya con peso λ
   bassGate?: boolean // true: el peso del bajo se atenúa si hay pocos graves; false: el bajo ya viene normalizado
@@ -45,7 +46,7 @@ export function decodeChords(frames: Float64Array[], hopSeconds: number, o: Deco
 
 /** times[i]..times[i+1] = intervalo del frame i (admite intervalos irregulares, p. ej. pulsos). */
 export function decodeTimed(frames: Float64Array[], times: number[], o: DecodeOptions = {}): Segment[] {
-  const { stay = 0.995, beta = 12, silenceRatio = 0.12, minDuration = 0.3, prior = null, bass = null, bassWeight = 0, triadsOnly = false, extPenalty = 1.5, stayAt = null, bassGate = true, bassTones = 0, bassWeightAt = null } = o
+  const { stay = 0.995, beta = 12, silenceRatio = 0.12, minDuration = 0.3, prior = null, bass = null, bassWeight = 0, triadsOnly = false, extPenalty = 1.5, stayAt = null, bassGate = true, bassTones = 0, bassWeightAt = null, rarePenalty = 0 } = o
   const nq = triadsOnly ? 2 : QUALITIES.length
   const T = frames.length
   if (T === 0) return []
@@ -53,7 +54,7 @@ export function decodeTimed(frames: Float64Array[], times: number[], o: DecodeOp
   const sorted = [...energy].sort((a, b) => a - b)
   const ref = sorted[Math.min(T - 1, Math.floor(0.95 * (T - 1)))]
   const silent = energy.map((e) => (ref <= 0 ? e <= 0 : e < silenceRatio * ref))
-  const { names, tpl, ext } = buildTemplates(nq)
+  const { names, tpl, ext, rare } = buildTemplates(nq)
   const nc = names.length, n = nc + 1
   const sim = new Float32Array(T * nc) // coseno puro (confianza)
   const score = new Float32Array(T * nc) // coseno + apoyo del bajo (decisión)
@@ -81,7 +82,7 @@ export function decodeTimed(frames: Float64Array[], times: number[], o: DecodeOp
   }
   const emis = (t: number, out: Float64Array) => {
     let m = -Infinity
-    for (let s = 0; s < nc; s++) { out[s] = silent[t] ? 0 : beta * score[t * nc + s] + (prior ? prior[s] : 0) - (ext[s] ? extPenalty : 0); m = Math.max(m, out[s]) }
+    for (let s = 0; s < nc; s++) { out[s] = silent[t] ? 0 : beta * score[t * nc + s] + (prior ? prior[s] : 0) - (ext[s] ? extPenalty : 0) - (rare[s] ? rarePenalty : 0); m = Math.max(m, out[s]) }
     out[nc] = silent[t] ? beta * 1.5 : 0; m = Math.max(m, out[nc])
     let sum = 0
     for (let s = 0; s < n; s++) sum += Math.exp(out[s] - m)

@@ -15,12 +15,10 @@ export function findActiveIndex(segments: Segment[], time: number, offset = 0): 
 }
 
 export function transposeChord(name: string, semitones: number): string {
-  const m = /^([A-G])([#b]?)(.*)$/.exec(name)
+  const m = /^([A-G][#b]?)([^/]*)(?:\/([A-G][#b]?))?$/.exec(name)
   if (!m) return name // "N" u otros: sin cambios
-  const root = FLATS[m[1] + m[2]] ?? m[1] + m[2]
-  const i = SHARPS.indexOf(root)
-  if (i < 0) return name
-  return SHARPS[(((i + semitones) % 12) + 12) % 12] + m[3]
+  const mv = (n: string) => { const i = SHARPS.indexOf(FLATS[n] ?? n); return i < 0 ? n : SHARPS[(((i + semitones) % 12) + 12) % 12] }
+  return mv(m[1]) + m[2] + (m[3] ? `/${mv(m[3])}` : '') // también se transpone el bajo de una inversión (G/B → A/C#)
 }
 
 export function transposeSegments(segments: Segment[], semitones: number): Segment[] {

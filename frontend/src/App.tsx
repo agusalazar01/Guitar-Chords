@@ -19,10 +19,10 @@ import type { Song } from './lib/songs.ts'
 import type { Segment } from './lib/types.ts'
 
 type Source = 'none' | 'demo' | 'analysis'
-const APP_VERSION = '0.5.1'
+const APP_VERSION = '0.5.2'
 const YT_RATES = [0.5, 0.75, 1, 1.25]
 const AUDIO_RATES = [0.5, 0.6, 0.75, 0.9, 1, 1.25]
-const CHORD_OK = /^(N|[A-G][#b]?(maj7|m7|sus2|sus4|dim|aug|m|7)?)$/
+const CHORD_OK = /^(N|[A-G][#b]?(maj7|m7|sus2|sus4|dim|aug|add9|m|7|6|9)?(\/[A-G][#b]?)?)$/
 const store = {
   get: <T,>(k: string, d: T): T => { try { return JSON.parse(localStorage.getItem(k) ?? '') as T } catch { return d } },
   set: (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch { /* sin almacenamiento */ } },
@@ -81,6 +81,10 @@ export default function App() {
 
   useEffect(() => { document.documentElement.dataset.theme = dark ? 'dark' : 'light'; store.set('dark', dark) }, [dark])
   useEffect(() => store.set('easyOnly', easyOnly), [easyOnly])
+  useEffect(() => { // ?selftest=1: prueba automática del motor (la usan los tests de navegador en GitHub Actions)
+    if (!new URLSearchParams(location.search).has('selftest')) return
+    runSelfTest().then((r) => { (window as unknown as { __selftest: unknown }).__selftest = r }, (e: Error) => { (window as unknown as { __selftest: unknown }).__selftest = { ok: false, error: e.message } })
+  }, [])
   useEffect(() => store.set('ytKey', ytKey), [ytKey])
   const original = song ? (advanced && song.advanced ? song.advanced : song.original) : null
   const refreshSongs = () => listSongs().then(setSongs).catch((e: Error) => setNotice(e.message))

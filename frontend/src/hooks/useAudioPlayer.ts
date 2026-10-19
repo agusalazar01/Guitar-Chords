@@ -24,8 +24,11 @@ export function useAudioPlayer(url: string | null) {
     a.onended = () => setPlaying(false)
     a.onerror = () => setError('Este navegador no pudo reproducir el archivo de audio.')
     ref.current = a
-    const poll = setInterval(() => setTime((p) => (Math.abs(p - a.currentTime) > 0.01 ? a.currentTime : p)), 100)
-    return () => { clearInterval(poll); a.pause(); a.removeAttribute('src'); a.load(); ref.current = null }
+    // Se lee la posición en cada cuadro de pantalla (~16 ms) en lugar de cada 100 ms: el acorde cambia sin esperar al siguiente sondeo.
+    let raf = 0
+    const tick = () => { setTime((p) => (Math.abs(p - a.currentTime) > 0.04 ? a.currentTime : p)); raf = requestAnimationFrame(tick) } // ≤ 25 renders por segundo
+    raf = requestAnimationFrame(tick)
+    return () => { cancelAnimationFrame(raf); a.pause(); a.removeAttribute('src'); a.load(); ref.current = null }
   }, [url])
 
   const seek = useCallback((t: number) => {

@@ -4,8 +4,8 @@ import type { Barre, Diagram } from './types.ts'
 export const TUNING = [4, 9, 2, 7, 11, 4] // E A D G B E (clases de altura)
 export const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 const FLATS: Record<string, string> = { Db: 'C#', Eb: 'D#', Gb: 'F#', Ab: 'G#', Bb: 'A#' }
-const SUFFIX = 'maj7|m7|sus2|sus4|dim|aug|m|7'
-const TONES: Record<string, number[]> = { '': [0, 4, 7], m: [0, 3, 7], '7': [0, 4, 7, 10], maj7: [0, 4, 7, 11], m7: [0, 3, 7, 10], sus2: [0, 2, 7], sus4: [0, 5, 7], dim: [0, 3, 6], aug: [0, 4, 8] }
+const SUFFIX = 'maj7|m7|sus2|sus4|dim|aug|add9|m|7|6|9'
+const TONES: Record<string, number[]> = { '': [0, 4, 7], m: [0, 3, 7], '7': [0, 4, 7, 10], maj7: [0, 4, 7, 11], m7: [0, 3, 7, 10], sus2: [0, 2, 7], sus4: [0, 5, 7], dim: [0, 3, 6], aug: [0, 4, 8], '6': [0, 4, 7, 9], add9: [0, 2, 4, 7], '9': [0, 2, 4, 7, 10] }
 
 const OPEN: Record<string, [number[], number[]]> = {
   C: [[-1, 3, 2, 0, 1, 0], [0, 3, 2, 0, 1, 0]], D: [[-1, -1, 0, 2, 3, 2], [0, 0, 0, 1, 3, 2]],
@@ -27,7 +27,7 @@ const OPEN: Record<string, [number[], number[]]> = {
 }
 
 export function normalize(name: string): [string, string] | null {
-  const m = new RegExp(`^([A-G][#b]?)(${SUFFIX})?$`).exec(name ?? '')
+  const m = new RegExp(`^([A-G][#b]?)(${SUFFIX})?$`).exec((name ?? '').replace(/\/.*$/, '')) // «G/B» usa la forma de G
   if (!m) return null
   const root = FLATS[m[1]] ?? m[1]
   return NOTES.includes(root) ? [root, m[2] ?? ''] : null
@@ -47,6 +47,25 @@ function diagram(chord: string, label: string, frets: number[], fingers: number[
   return { chord, label, frets, fingers, base_fret: base, barre, source }
 }
 
+/** Formas móviles (cejilla) para acordes sin posición abierta. off: trastes relativos a la raíz (null = no tocar).
+ *  Cada forma se comprueba nota por nota en los tests (solo notas del acorde, las obligatorias presentes y la raíz en el bajo). */
+interface Shape { q: string; on: 6 | 5; off: (number | null)[]; fingers: number[]; barre: [number, number, number] | null; minFret?: number }
+const SHAPES: Shape[] = [
+  { q: '7', on: 6, off: [0, 2, 0, 1, 0, 0], fingers: [1, 3, 1, 2, 1, 1], barre: [0, 0, 5] },
+  { q: 'm7', on: 6, off: [0, 2, 0, 0, 0, 0], fingers: [1, 3, 1, 1, 1, 1], barre: [0, 0, 5] },
+  { q: 'maj7', on: 6, off: [0, null, 1, 1, 0, null], fingers: [1, 0, 3, 4, 2, 0], barre: null },
+  { q: 'sus4', on: 6, off: [0, 2, 2, 2, 0, 0], fingers: [1, 2, 3, 4, 1, 1], barre: [0, 0, 5] },
+  { q: '7', on: 5, off: [null, 0, 2, 0, 2, 0], fingers: [0, 1, 3, 1, 4, 1], barre: [0, 1, 5] },
+  { q: 'm7', on: 5, off: [null, 0, 2, 0, 1, 0], fingers: [0, 1, 3, 1, 2, 1], barre: [0, 1, 5] },
+  { q: 'maj7', on: 5, off: [null, 0, 2, 1, 2, 0], fingers: [0, 1, 3, 2, 4, 1], barre: [0, 1, 5] },
+  { q: 'sus4', on: 5, off: [null, 0, 2, 2, 3, 0], fingers: [0, 1, 2, 3, 4, 1], barre: [0, 1, 5] },
+  { q: 'sus2', on: 5, off: [null, 0, 2, 2, 0, 0], fingers: [0, 1, 3, 4, 1, 1], barre: [0, 1, 5] },
+  { q: 'dim', on: 5, off: [null, 0, 1, 2, 1, null], fingers: [0, 1, 2, 4, 3, 0], barre: null },
+  { q: 'aug', on: 5, off: [null, 0, -1, -2, -2, null], fingers: [0, 4, 3, 1, 1, 0], barre: [-2, 3, 4], minFret: 3 },
+  { q: '6', on: 5, off: [null, 0, 2, 2, 2, 2], fingers: [0, 1, 3, 3, 3, 3], barre: [2, 2, 5] },
+  { q: '9', on: 5, off: [null, 0, -1, 0, 0, 0], fingers: [0, 2, 1, 3, 3, 3], barre: [0, 3, 5], minFret: 2 },
+]
+
 export function getDiagrams(name: string): Diagram[] {
   const n = normalize(name)
   if (!n) return []
@@ -65,6 +84,14 @@ export function getDiagrams(name: string): Diagram[] {
       const b = q === '' ? [0, 2, 2, 2, 0] : [0, 2, 2, 1, 0]
       out.push(diagram(chord, `Cejilla (forma de La, traste ${aF})`, [-1, ...b.map((x) => aF + x)], q === '' ? [0, 1, 3, 3, 3, 1] : [0, 1, 3, 4, 2, 1], { fret: aF, from_string: 1, to_string: 5 }, src))
     }
+  }
+  const r = NOTES.indexOf(root)
+  for (const sh of SHAPES.filter((x) => x.q === q)) {
+    let f = (r - (sh.on === 6 ? 4 : 9) + 12) % 12
+    if (f < (sh.minFret ?? 1)) f += 12 // traste 0 = forma abierta (ya cubierta o no aplicable): se usa la octava
+    const real = sh.off.map((o) => (o === null ? -1 : f + o))
+    const barre = sh.barre ? { fret: f + sh.barre[0], from_string: sh.barre[1], to_string: sh.barre[2] } : null
+    out.push(diagram(chord, `Forma móvil (raíz en la ${sh.on}ª, traste ${f})`, real, sh.fingers, barre, 'Forma móvil comprobada por notas'))
   }
   return out
 }

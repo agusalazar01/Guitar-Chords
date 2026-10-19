@@ -4,7 +4,7 @@
  *   node --experimental-strip-types tools/ci-model-check.ts
  */
 import { readFileSync } from 'node:fs'
-import * as ort from 'onnxruntime-web'
+import * as ort from 'onnxruntime-web/wasm' // la misma entrada que usa la app
 import { BP, bpUnwrap, bpWindow, bpWindowCount, selfTestSignal } from '../src/lib/engine/notes.ts'
 
 // Referencia (Python, onnxruntime 1.29 nativo, mismo audio): probabilidad media 1–4 s de las notas principales

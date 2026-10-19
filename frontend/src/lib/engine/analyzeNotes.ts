@@ -8,7 +8,7 @@ import type { NoteFeatures } from './notes.ts'
 
 /** Elegidos con 6 canciones (README). bassTones: una inversión (bajo en 3ª/5ª) también apoya al acorde; conc*: el bajo solo pesa cuando una nota grave domina. */
 export const NPARAMS = {
-  fuseWeight: 1, keyBonus: 0.75, offStay: 0.99, onStay: 0.9, extPenalty: 0.8, bassWeight: 0.5, beta: 12,
+  fuseWeight: 1, rarePenalty: 0.5, keyBonus: 0.75, offStay: 0.97, onStay: 0.9, timeShift: -0.05, extPenalty: 0.8, bassWeight: 0.5, beta: 12,
   bassTones: 0.9, concLo: 0.15, concHi: 0.35, inversionShare: 0.55, inversionMinSec: 0.6, minBassEnergy: 0.15,
 }
 export const NMETHOD = 'híbrido IA (Basic Pitch) + croma + HMM v0.5 (en el dispositivo)'
@@ -58,9 +58,11 @@ export function analyzeNotes(f: NoteFeatures, duration: number, tr: BeatResult &
   const first = decodeTimed(f.treble, times, { ...common, triadsOnly: true })
   const key = keyFromChords(first) ?? estimateKey(f.treble)
   const run = (triadsOnly: boolean) => inversions(decodeTimed(f.treble, times, {
-    ...common, prior: keyPrior(key, NPARAMS.keyBonus, triadsOnly ? 2 : QUALITIES.length), triadsOnly, extPenalty: NPARAMS.extPenalty,
+    ...common, prior: keyPrior(key, NPARAMS.keyBonus, triadsOnly ? 2 : QUALITIES.length), triadsOnly, extPenalty: NPARAMS.extPenalty, rarePenalty: NPARAMS.rarePenalty,
   }), f)
-  const segments = run(true), advanced = run(false)
+  // Corrección de latencia medida contra Chordify (los cambios salían ~0,03–0,14 s tarde): se adelantan los límites 50 ms.
+  const shift = (segs: Segment[]) => segs.map((x, i) => ({ ...x, start: i ? Math.max(0, +(x.start + NPARAMS.timeShift).toFixed(3)) : x.start, end: i < segs.length - 1 ? Math.max(0, +(x.end + NPARAMS.timeShift).toFixed(3)) : x.end }))
+  const segments = shift(run(true)), advanced = shift(run(false))
   let downbeat = 0
   if (tr.usable) {
     const idx = segments.slice(1).map((s) => {

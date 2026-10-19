@@ -27,6 +27,19 @@ archivo propio pueden mostrarse sobre el video con un desfase manual.
 4. Tonalidad por acordes (dos pasadas) como bonificación suave + **Viterbi** con más probabilidad de cambio sobre los pulsos.
 5. Si el modelo no carga, el worker usa el **motor clásico v0.4.2** (se conserva completo) y la app lo avisa.
 
+### Cambios de la v0.5.2
+- **Causa del fallo del motor de IA** («no available backend found … Importing a module script failed»): la app importaba la entrada
+  general de onnxruntime-web, que trae WebGPU/JSEP y pide `ort-wasm-simd-threaded.jsep.mjs`, archivo que no se copiaba a `public/ort`.
+  Ahora se importa `onnxruntime-web/wasm` (solo WebAssembly) y, antes de cargar, se comprueba que existan los archivos del motor.
+  Nueva prueba en GitHub Actions que abre la web compilada en **Chromium** (el motor del WebView de Android) y **WebKit** (Safari) y
+  ejecuta la prueba del motor (`tools/browser-selftest.mjs`).
+- **B7 leído como B9**: 6, add9 y 9 pagan una penalización extra; en las 6 canciones de prueba ya no aparecen (no hay ninguno en las
+  referencias) y «Carta» sube de 15 % a 26 % de acordes completos en modo Avanzados.
+- **Retraso**: los cambios se adelantan 50 ms (latencia medida contra Chordify) y el acorde se mantiene un poco menos; la app lee la
+  posición del reproductor en cada cuadro de pantalla (antes cada 100 ms). Retraso mediano: «A las nueve» +34 → −16 ms, «Carta» +143 → +84 ms.
+- **Diagramas**: formas móviles comprobadas nota por nota para 7, m7, maj7, sus2, sus4, dim, aug, 6 y 9 en las 12 raíces; las inversiones
+  (G/B) muestran la forma del acorde y al transponer se mueve también el bajo. Sin diagrama quedan solo los add9.
+
 ### Resultados (mismos audios y referencias para todos los motores; `tools/`)
 Referencias con tiempos: lo que muestra Chordify en las 2 grabaciones de pantalla del usuario. Cancioneros: sin tiempos (métricas aproximadas).
 «Completo» = raíz + tipo exacto (Am7 ≠ Am); «mayor/menor» = raíz y si es mayor o menor; similitud = notas compartidas (separada de la precisión).

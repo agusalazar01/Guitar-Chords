@@ -55,11 +55,14 @@ export function useYouTubePlayer(videoId: string | null) {
       })
     })
     // El tiempo SIEMPRE se lee del reproductor (no hay temporizador propio que avance acordes).
-    const poll = setInterval(() => {
+    let raf = 0
+    const tick = () => {
       const p = playerRef.current
-      if (p?.getCurrentTime) { const t = p.getCurrentTime(); setTime((prev) => (Math.abs(prev - t) > 0.01 ? t : prev)) }
-    }, 100)
-    return () => { cancelled = true; clearInterval(poll); playerRef.current?.destroy?.(); playerRef.current = null }
+      if (p?.getCurrentTime) { const t = p.getCurrentTime(); setTime((prev) => (Math.abs(prev - t) > 0.04 ? t : prev)) } // ≤ 25 renders por segundo
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => { cancelled = true; cancelAnimationFrame(raf); playerRef.current?.destroy?.(); playerRef.current = null }
   }, [videoId])
 
   const seek = useCallback((t: number) => {

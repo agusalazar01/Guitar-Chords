@@ -20,6 +20,7 @@ public class MainActivity extends BridgeActivity {
 
   @Override
   public void onCreate(Bundle savedInstanceState) {
+    registerPlugin(WebPickerPlugin.class); // búsqueda de YouTube y páginas de cancionero dentro de la app
     super.onCreate(savedInstanceState);
     take(getIntent());
   }

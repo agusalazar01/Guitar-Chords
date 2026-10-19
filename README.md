@@ -5,6 +5,36 @@ propio teléfono** y los muestra con la reproducción (archivo o video de YouTub
 edición. No hay servidor propio ni cuentas. (El identificador interno de la APK sigue siendo `app.guitarchords` para conservar las
 canciones ya guardadas; el repositorio mantiene su nombre.)
 
+## Novedades de la v0.7.0: buscar una canción y tenerla lista (sin descargar nada)
+**En la APK**, escribís el nombre en la lupa y:
+1. Se abre **la búsqueda de YouTube dentro de la app** (versión móvil, sin cuenta ni clave). Tocás el video y la app lo toma sola
+   (plugin nativo `android-extra/WebPickerPlugin.java`).
+2. Con lo que escribiste y el título del video, la app **busca la letra sincronizada** (LRCLIB) y la guarda.
+3. Se abre **el cancionero** (búsqueda en LaCuerda / Cifra Club) ya con esa canción. Elegís la versión y tocás **«Importar acordes»**:
+   la app lee el texto de esa página que estás viendo (nada se lee sin que lo pidas).
+4. Los acordes se **ubican solos en el tiempo con la letra**: el cifrado dice sobre qué palabra va cada acorde y la letra cuándo se
+   canta cada línea. Intro y partes instrumentales se reparten antes del canto; los estribillos escritos una sola vez se reconocen
+   por parecido. Queda todo guardado en Mi cancionero (video + letra + acordes).
+5. Si el video tiene otra intro, **«Empezó a cantar»** corre la letra y los acordes juntos.
+
+**En la web**: «Buscar cifrado ↗» abre la búsqueda en otra pestaña y **«Pegar cifrado»** usa el texto que copies (de cualquier sitio o
+libro). La IA con tu propio audio sigue igual (es la opción más precisa).
+
+Qué está verificado: pruebas del lector de cifrados (nombres en inglés y latinos, bemoles, sostenidos, maj7, slash) y de la ubicación
+con la letra; el código Java compila contra versiones mínimas de las clases de Android/Capacitor (la compilación real la hace
+GitHub Actions). **No verificado**: el uso real en el teléfono (YouTube y los cancioneros dentro de la app). Límites: los tiempos dentro
+de cada línea son aproximados; los cifrados y las letras tienen derechos de autor (uso personal; la app no publica nada).
+
+## Cambios de la v0.6.2
+- **Acordes completos por defecto**: la app muestra los acordes como los detecta (con séptimas cuando se oyen). El botón
+  **«Simplificado»** los muestra sin séptimas. Las canciones con correcciones hechas en el modo simple siguen abriéndose así.
+- **«Volver a analizar con el motor nuevo»**: aparece en canciones analizadas con un motor anterior; conserva letra y video.
+- **Letra con intro y versiones en vivo**: antes del primer verso no se resalta ninguna línea («♪ Intro»). Con **«Empezó a cantar»**
+  la letra se corre hasta donde empieza el canto en tu versión; con «La próxima línea empieza ahora» se agregan más puntos y la
+  letra se estira o acorta entre ellos. «Quitar ajustes» vuelve a los tiempos originales.
+- La detección automática del comienzo del canto se probó y **no** fue confiable (las melodías de guitarra se confunden con la voz),
+  así que por ahora el ajuste es con un toque.
+
 ## Motor v0.6.1 (medido)
 Referencia nueva: la grabación completa de Chordify de «Carta para no llorar» que mandó el usuario (109 acordes en 175 s, alineada con
 el MP3 por el audio; Chordify pone los cambios sobre una grilla de 1–2 s). Qué se encontró y qué se cambió:

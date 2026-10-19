@@ -13,8 +13,9 @@ const fmtDur = (d: number | null) => (d ? `${Math.floor(d / 60)}:${String(Math.r
 
 /** Buscador único: por nombre busca la canción y su letra (LRCLIB, sin clave) y videos de YouTube (en la app con clave propia;
  *  sin clave, abre YouTube con la búsqueda hecha y el video vuelve con «Compartir → Mi Cancionero» en la APK, o pegando el enlace). */
-export function SearchPanel({ onPick, onLyrics, recent, apiKey }: {
+export function SearchPanel({ onPick, onLyrics, onVideoSearch, recent, apiKey }: {
   onPick: (v: { id: string; title?: string }) => void; onLyrics: (r: LyricResult) => void
+  onVideoSearch?: (q: string) => void // APK: abre la búsqueda de YouTube dentro de la app
   recent: { id: string; title: string }[]; apiKey: string
 }) {
   const [q, setQ] = useState('')
@@ -47,6 +48,7 @@ export function SearchPanel({ onPick, onLyrics, recent, apiKey }: {
     if (id) { onPick({ id }); setResults(null); setSongs(null); return }
     if (/^https?:\/\//i.test(q.trim())) { setErr('Ese enlace no parece ser un video de YouTube válido.'); return }
     if (q.trim().length < 2) return
+    if (onVideoSearch && isNative() && !apiKey) { onVideoSearch(q.trim()); return } // flujo rápido: video → letra → acordes
     await run(q.trim())
   }
   const ytUrl = (text: string) => `https://www.youtube.com/results?search_query=${encodeURIComponent(text)}`
@@ -58,6 +60,9 @@ export function SearchPanel({ onPick, onLyrics, recent, apiKey }: {
           aria-label="Buscar canción" className="flex-1 min-h-11 rounded-lg border border-line bg-panel px-3" />
         <button className="min-h-11 px-4 rounded-lg bg-accent text-accent-fg font-semibold" disabled={busy}>{busy ? 'Buscando…' : 'Buscar'}</button>
       </form>
+      {onVideoSearch && isNative() && !apiKey && (
+        <p className="mt-1 text-xs text-mute">Buscar abre YouTube acá adentro: tocá el video y la app trae la letra y te ofrece los acordes.{' '}
+          <button className="underline" onClick={() => q.trim().length > 1 && run(q.trim())}>Buscar solo la letra</button></p>)}
       {err && <p role="alert" className="mt-2 text-sm text-red-500">{err}</p>}
       {songs && (
         <div className="mt-3">

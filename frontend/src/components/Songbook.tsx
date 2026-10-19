@@ -47,7 +47,7 @@ export default function Songbook({ open, songs, currentId, onClose, onOpen, onNe
     return () => { window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up) }
   }, [dragId, list, onReorder])
 
-  const tag = (s: Song) => [s.audio ? 'audio analizado' : s.original.length ? 'acordes marcados' : 'sin acordes', s.lyrics ? (s.lyrics.synced ? 'letra' : 'letra sin tiempos') : null, s.settings.videoId ? 'video' : null].filter(Boolean).join(' · ')
+  const tag = (s: Song) => [s.audio ? 'audio analizado' : s.kind === 'cifrado' ? 'acordes del cancionero' : s.original.length ? 'acordes marcados' : 'sin acordes', s.lyrics ? (s.lyrics.synced ? 'letra' : 'letra sin tiempos') : null, s.settings.videoId ? 'video' : null].filter(Boolean).join(' · ')
   const small = 'min-h-10 min-w-10 rounded-lg border border-line px-2 text-sm'
   return (
     <div className={`fixed inset-0 z-40 ${open ? '' : 'pointer-events-none'}`} aria-hidden={!open}>

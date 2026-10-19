@@ -47,6 +47,14 @@ for (const [name, type] of [['Chromium (Chrome / WebView de Android)', chromium]
   await step('al volver a elegir el video, sus acordes se abren solos', async () => {
     await pick(); await page.getByText('acordes marcados a mano sobre el video').first().waitFor({ timeout: 10000 })
   })
+  await step('pegar un cifrado crea acordes para el video', async () => {
+    await page.getByRole('button', { name: '+ Nueva', exact: true }).click()
+    await pick()
+    await page.getByRole('button', { name: 'Pegar cifrado' }).first().click({ timeout: 10000 })
+    await page.getByLabel('Cifrado').fill('Am          G\nPrimera línea de prueba\nF           E\nSegunda línea de prueba')
+    await page.getByRole('button', { name: 'Usar estos acordes' }).click()
+    await page.getByText('acordes del cancionero').first().waitFor({ timeout: 10000 })
+  })
   // Letras (LRCLIB) desde el navegador: si falla, la web no puede consultar LRCLIB (CORS); la APK usa la capa nativa y no depende de esto.
   try {
     await page.getByRole('button', { name: '+ Nueva', exact: true }).click()

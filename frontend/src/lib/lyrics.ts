@@ -88,3 +88,30 @@ export function rankResults(results: LyricResult[], query: string, duration: num
     .map((x) => x.r)
     .filter((r) => { const k = `${norm(r.trackName)}|${norm(r.artistName)}|${Math.round(r.duration ?? 0)}|${!!r.syncedLyrics}`; if (seen.has(k)) return false; seen.add(k); return true })
 }
+
+/** Punto de ajuste: la línea que en la letra empieza en `l` suena en el segundo `t` del audio o video. */
+export interface LyricAnchor { l: number; t: number }
+
+/** Tiempo de la letra que corresponde al tiempo t del audio: lineal entre puntos de ajuste (corrige intros más largas y versiones
+ *  en vivo más lentas o rápidas); fuera de los puntos, avanza a la misma velocidad. Sin puntos, es t (más el corrimiento). */
+export function lyricTime(t: number, anchors: LyricAnchor[] = [], offset = 0): number {
+  const x = t - offset
+  if (!anchors.length) return x
+  const a = [...anchors].sort((p, q) => p.t - q.t)
+  if (x <= a[0].t) return a[0].l + (x - a[0].t)
+  for (let i = 1; i < a.length; i++) if (x <= a[i].t) { const p = a[i - 1], q = a[i]; return p.l + ((x - p.t) * (q.l - p.l)) / (q.t - p.t) }
+  const z = a[a.length - 1]; return z.l + (x - z.t)
+}
+/** Inverso de lyricTime: en qué segundo del audio suena el momento l de la letra. */
+export function audioTime(l: number, anchors: LyricAnchor[] = [], offset = 0): number {
+  if (!anchors.length) return l + offset
+  const a = [...anchors].sort((p, q) => p.l - q.l)
+  if (l <= a[0].l) return a[0].t + (l - a[0].l) + offset
+  for (let i = 1; i < a.length; i++) if (l <= a[i].l) { const p = a[i - 1], q = a[i]; return p.t + ((l - p.l) * (q.t - p.t)) / (q.l - p.l) + offset }
+  const z = a[a.length - 1]; return z.t + (l - z.l) + offset
+}
+/** Agrega un punto de ajuste; descarta los que quedarían en contradicción (una línea posterior antes que una anterior). */
+export function addAnchor(anchors: LyricAnchor[] = [], l: number, t: number): LyricAnchor[] {
+  const keep = anchors.filter((a) => Math.abs(a.l - l) > 0.01 && (a.l < l ? a.t < t - 0.2 : a.t > t + 0.2))
+  return [...keep, { l, t }].sort((p, q) => p.l - q.l)
+}

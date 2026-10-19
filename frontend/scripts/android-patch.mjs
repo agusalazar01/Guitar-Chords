@@ -19,4 +19,5 @@ if (!/launchMode="singleTask"/.test(xml)) console.warn('Aviso: la actividad no e
 const act = 'android/app/src/main/java/app/guitarchords/MainActivity.java'
 if (!fs.existsSync(act)) throw new Error('No encontré ' + act)
 fs.copyFileSync('android-extra/MainActivity.java', act)
-console.log('Android: compartir desde YouTube configurado.')
+fs.copyFileSync('android-extra/WebPickerPlugin.java', act.replace('MainActivity.java', 'WebPickerPlugin.java'))
+console.log('Android: compartir desde YouTube y WebPicker configurados.')

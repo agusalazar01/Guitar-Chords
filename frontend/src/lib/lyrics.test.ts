@@ -37,3 +37,16 @@ test('rankResults: primero con tiempos y sin duplicados', () => {
   const r = rankResults([R({ id: 1, syncedLyrics: null }), R({ id: 2 }), R({ id: 3 }), R({ id: 4, trackName: 'Otra', plainLyrics: null, syncedLyrics: null })], 'guitarrero viejo', null)
   assert.deepEqual(r.map((x) => x.id), [2, 1])
 })
+
+import { addAnchor, audioTime, lyricTime } from './lyrics.ts'
+test('puntos de ajuste: intro más larga y versión más lenta', () => {
+  assert.equal(lyricTime(30), 30) // sin ajuste
+  const one = addAnchor([], 20, 35) // la letra empieza a los 20 s pero el canto entra a los 35 s
+  assert.equal(lyricTime(35, one), 20)
+  assert.equal(lyricTime(10, one), -5) // antes del canto: la letra no empezó
+  const two = addAnchor(one, 120, 145) // 100 s de letra duran 110 s en vivo
+  assert.ok(Math.abs(lyricTime(90, two) - 70) < 1e-9)
+  assert.ok(Math.abs(audioTime(70, two) - 90) < 1e-9)
+  assert.equal(lyricTime(150, two), 125)
+  assert.deepEqual(addAnchor(two, 60, 200).map((a) => a.l), [20, 60]) // contradice el de 120 s: se descarta
+})

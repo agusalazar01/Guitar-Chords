@@ -7,9 +7,10 @@ const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.fl
 /** Letra debajo del compás. Mientras no empieza el canto (intro, partes habladas) no se resalta ninguna línea; con «Empezó a cantar»
  *  y «La próxima línea empieza ahora» se marcan puntos de ajuste: la letra se corre hasta donde está el canto en tu versión y se
  *  estira o acorta entre puntos (versiones en vivo más lentas o rápidas). */
-export default function LyricsView({ lyrics, time, offset, anchors, onAdjust, onSeek, onRemove }: {
+export default function LyricsView({ lyrics, time, offset, anchors, onAdjust, onSeek, onRemove, onChange }: {
   lyrics: SongLyrics; time: number; offset: number; anchors: LyricAnchor[]
   onAdjust: (a: { offset?: number; anchors?: LyricAnchor[] }) => void; onSeek: (t: number) => void; onRemove: () => void
+  onChange: () => void // «No es esta letra»: abre la búsqueda de letras
 }) {
   const [full, setFull] = useState(false)
   const [tools, setTools] = useState(false) // ajustes de la letra, ocultos para que se vea la letra
@@ -52,7 +53,8 @@ export default function LyricsView({ lyrics, time, offset, anchors, onAdjust, on
         </ol>
       )}
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-mute">
-        <span className="min-w-0 flex-1 truncate">{lyrics.trackName} · {lyrics.artistName}{lyrics.source === 'lrclib' ? ' · letra de LRCLIB' : ''}</span>
+        <span className="min-w-0 flex-1 truncate">{lyrics.trackName}{lyrics.artistName ? ` · ${lyrics.artistName}` : ''}{lyrics.source === 'lrclib' ? ' · LRCLIB' : ''}</span>
+        <button className="min-h-9 px-1 text-xs underline" onClick={onChange}>No es esta letra</button>
         <button className={small} onClick={() => setTools((x) => !x)} aria-expanded={tools} aria-label="Ajustes de la letra">{tools ? 'Listo' : '⚙ Letra'}</button>
       </div>
       {tools && <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-mute">

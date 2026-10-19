@@ -40,9 +40,10 @@ for (const [name, type] of [['Chromium (Chrome / WebView de Android)', chromium]
     await page.getByRole('dialog', { name: 'Mi cancionero' }).getByText('acordes marcados').first().waitFor({ timeout: 10000 })
     await page.getByRole('button', { name: 'Cerrar' }).click()
   })
-  await step('«+ Nueva» vuelve al inicio sin recargar', async () => {
+  await step('«+ Nueva» vuelve al inicio sin recargar y limpia el buscador', async () => {
     await page.getByRole('button', { name: '+ Nueva', exact: true }).click()
     await page.getByText('Buscá una canción o elegí un MP3/WAV para empezar.').waitFor({ timeout: 10000 })
+    if (await search.inputValue()) throw new Error('el buscador conserva el texto anterior')
   })
   await step('al volver a elegir el video, sus acordes se abren solos', async () => {
     await pick(); await page.getByLabel('Secuencia de acordes').waitFor({ timeout: 10000 })
@@ -51,10 +52,10 @@ for (const [name, type] of [['Chromium (Chrome / WebView de Android)', chromium]
     if (await page.getByText('Transponer').count()) throw new Error('las opciones se ven sin abrirlas')
     await page.getByRole('button', { name: '⋯ Opciones' }).click()
     await page.getByText('Transponer').first().waitFor({ timeout: 5000 })
-    await page.getByRole('button', { name: 'Ocultar opciones' }).click()
+    await page.getByRole('button', { name: 'Ocultar', exact: true }).click()
   })
   await step('pegar un cifrado crea acordes para el video', async () => {
-    await page.getByRole('button', { name: '⋯ Opciones' }).click()
+    await page.getByRole('button', { name: 'Acordes', exact: true }).click()
     await page.getByRole('button', { name: 'Pegar cifrado' }).first().click({ timeout: 10000 })
     await page.getByLabel('Cifrado').fill('Am          G\nPrimera línea de prueba\nF           E\nSegunda línea de prueba')
     await page.getByRole('button', { name: 'Usar estos acordes' }).click()

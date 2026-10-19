@@ -42,7 +42,7 @@ export function activeLine(lines: LyricLine[], t: number): number {
   return ans
 }
 
-const NOISE = /\b(official|oficial|video|videoclip|clip|audio|lyrics?|letra|hd|hq|4k|remaster(ed)?|en vivo|live|ft|feat|visualizer|music|musical)\b/gi
+const NOISE = /\b(official|oficial|video|videoclip|clip|audio|lyrics?|letra|hd|hq|4k|remaster(ed)?|en vivo|live|ft|feat|visualizer|music|musical|stereo|mono)\b/gi
 /** Limpia un título de YouTube o un nombre de archivo para buscar la letra: quita extensión, paréntesis y palabras de relleno. */
 export function cleanTitle(s: string): string {
   return s
@@ -114,4 +114,40 @@ export function audioTime(l: number, anchors: LyricAnchor[] = [], offset = 0): n
 export function addAnchor(anchors: LyricAnchor[] = [], l: number, t: number): LyricAnchor[] {
   const keep = anchors.filter((a) => Math.abs(a.l - l) > 0.01 && (a.l < l ? a.t < t - 0.2 : a.t > t + 0.2))
   return [...keep, { l, t }].sort((p, q) => p.l - q.l)
+}
+
+/** Artista y canción a partir del título de un video («Julieta Venegas - Me Voy (Video Oficial)»). Sin « - », artist es null. */
+export function parseVideoTitle(raw: string): { artist: string | null; title: string; query: string } {
+  const base = raw.replace(/^\s*mix\s*[-–—:]\s*/i, '').replace(/[([{【].*?[)\]}】]/g, ' ')
+  const parts = base.split(/\s+[-–—|]\s+/).map((x) => cleanTitle(x)).filter(Boolean)
+  if (parts.length >= 2) return { artist: parts[0], title: parts[1], query: `${parts[0]} ${parts[1]}` }
+  const t = cleanTitle(base)
+  return { artist: null, title: t, query: t }
+}
+
+const wordsOf = (s: string) => norm(s).split(' ').filter((w) => w.length > 1)
+/** Elige sola una letra solo si es muy probable: el título coincide y además coincide el artista o la duración (±3 s).
+ *  Con solo el título (p. ej. un archivo «Buenas Noches.mp3») no elige: hay muchas canciones con el mismo nombre. */
+export function pickConfident(results: LyricResult[], want: { artist: string | null; title: string }, duration: number | null): LyricResult | null {
+  const tw = new Set(wordsOf(want.title)), aw = new Set(wordsOf(want.artist ?? ''))
+  if (!tw.size) return null
+  const ok = results.filter((r) => {
+    if (r.instrumental || !r.syncedLyrics) return false
+    const rt = wordsOf(r.trackName)
+    if (!rt.length) return false
+    const titleOk = rt.filter((w) => tw.has(w)).length / rt.length >= 0.8 && [...tw].filter((w) => rt.includes(w)).length / tw.size >= 0.6
+    if (!titleOk) return false
+    const ra = wordsOf(r.artistName)
+    const artistOk = aw.size > 0 && ra.filter((w) => aw.has(w)).length >= Math.min(2, Math.max(1, aw.size))
+    const durOk = !!duration && !!r.duration && Math.abs(r.duration - duration) <= 3
+    return artistOk || durOk
+  })
+  ok.sort((a, b) => Math.abs((a.duration ?? 0) - (duration ?? 0)) - Math.abs((b.duration ?? 0) - (duration ?? 0)))
+  return ok[0] ?? null
+}
+
+/** Letra pegada a mano: con marcas [mm:ss] queda sincronizada; si no, solo texto. */
+export function pastedLyrics(text: string, trackName: string): SongLyrics {
+  const synced = parseLrc(text)
+  return { source: 'manual', trackName, artistName: '', synced: synced.length >= 3 ? synced : null, plain: synced.length >= 3 ? null : text.trim() }
 }

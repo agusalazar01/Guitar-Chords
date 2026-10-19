@@ -50,3 +50,22 @@ test('puntos de ajuste: intro más larga y versión más lenta', () => {
   assert.equal(lyricTime(150, two), 125)
   assert.deepEqual(addAnchor(two, 60, 200).map((a) => a.l), [20, 60]) // contradice el de 120 s: se descarta
 })
+
+import { parseVideoTitle, pickConfident, pastedLyrics } from './lyrics.ts'
+test('parseVideoTitle: artista y canción del título del video', () => {
+  assert.deepEqual(parseVideoTitle('Julieta Venegas - Me Voy (Video Oficial)'), { artist: 'Julieta Venegas', title: 'Me Voy', query: 'Julieta Venegas Me Voy' })
+  assert.equal(parseVideoTitle('Mix - Julieta Venegas - Lento [HD]').title, 'Lento')
+  assert.equal(parseVideoTitle('Buenas Noches').artist, null)
+})
+test('pickConfident: título solo no alcanza; título + artista o título + duración sí', () => {
+  const sayMo = R({ id: 1, trackName: 'Buenas Noches', artistName: 'Say Mo', duration: 125 })
+  const darnu = R({ id: 2, trackName: 'Buenas noches', artistName: 'Eduardo Darnauchans', duration: 117 })
+  assert.equal(pickConfident([sayMo, darnu], { artist: null, title: 'Buenas Noches' }, 140), null)
+  assert.equal(pickConfident([sayMo, darnu], { artist: null, title: 'Buenas Noches' }, 118)?.id, 2) // duración ±3 s
+  assert.equal(pickConfident([sayMo, darnu], { artist: 'Eduardo Darnauchans', title: 'Buenas Noches' }, 200)?.id, 2)
+  assert.equal(pickConfident([sayMo], { artist: 'Julieta Venegas', title: 'Me Voy' }, 180), null)
+})
+test('pastedLyrics: con o sin tiempos', () => {
+  assert.ok(pastedLyrics('[00:01.00] a\n[00:02.00] b\n[00:03.00] c', 'x').synced)
+  assert.equal(pastedLyrics('una\nletra', 'x').plain, 'una\nletra')
+})

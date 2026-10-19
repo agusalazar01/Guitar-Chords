@@ -5,6 +5,19 @@ propio teléfono** y los muestra con la reproducción (archivo o video de YouTub
 edición. No hay servidor propio ni cuentas. (El identificador interno de la APK sigue siendo `app.guitarchords` para conservar las
 canciones ya guardadas; el repositorio mantiene su nombre.)
 
+## Cambios de la v0.7.2
+- Tres botones siempre a mano debajo de la letra: **Letra**, **Acordes** y **⋯ Opciones**. Las opciones quedan en grupos
+  plegables: «Para tocar» (transponer, cejilla, simplificados, saltos, bucle, velocidad, volumen), «Ajustar» (desfase, editar
+  acorde) y «Otros» (volver a analizar, información, demostración, Mi cancionero).
+- Reproductor mínimo abajo: con archivo, solo play/pausa y la línea de tiempo; con video, el video chico + play/pausa + línea.
+- La letra y la búsqueda en el cancionero usan el **título del video elegido** (artista y canción separados por « - », sin
+  «(Video Oficial)», «Letra», «HD»…); lo escrito en el buscador solo si el video no trae título; con archivo propio, el nombre del archivo.
+- Elección automática de la letra más estricta: solo si coinciden título + artista, o título + duración (±3 s). Si no, muestra la
+  lista para elegir. «No es esta letra» abre la búsqueda de letras.
+- «Letra» abre una búsqueda SOLO de letras (LRCLIB), con «Reintentar» si LRCLIB falla (p. ej. 503) y «Pegar letra» a mano
+  (si trae marcas [01:23.45] queda sincronizada).
+- «+ Nueva» reinicia todo el buscador (texto, resultados y errores viejos).
+
 ## Cambios de la v0.7.1
 - **Letra**: se busca primero con el título del video y después con lo que escribiste; si LRCLIB falla, reintenta; si no la encuentra
   aparece «No encontré la letra · Buscar la letra». Si la letra llega después de importar el cifrado, los acordes se reubican solos.

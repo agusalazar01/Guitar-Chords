@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import Controls from './components/Controls.tsx'
+import Controls, { PlayExtras } from './components/Controls.tsx'
+import LyricsSearch from './components/LyricsSearch.tsx'
 import DiagramView from './components/Diagram.tsx'
 import { AudioPanel, MarkPanel, SearchPanel } from './components/Panels.tsx'
 import Songbook from './components/Songbook.tsx'
@@ -19,7 +20,7 @@ import { CANCELLED, runSelfTest, startAnalysis } from './lib/engine/runWorker.ts
 import { NMETHOD } from './lib/engine/analyzeNotes.ts'
 import { deleteSong, listSongs, requestPersistence, saveOrder, saveSong, topOrder } from './lib/songs.ts'
 import { searchLyrics } from './lib/lrclib.ts'
-import { cleanTitle, matchScore, pickAuto, rankResults, toSongLyrics } from './lib/lyrics.ts'
+import { cleanTitle, parseVideoTitle, pastedLyrics, pickConfident, rankResults, toSongLyrics } from './lib/lyrics.ts'
 import type { LyricAnchor, LyricResult as LR } from './lib/lyrics.ts'
 import { alignCifrado, cifradoSegments, parseCifrado } from './lib/cifrado.ts'
 import { estimateBeats, simplifyChord } from './lib/grid.ts'
@@ -30,7 +31,7 @@ import type { Song } from './lib/songs.ts'
 import type { Segment } from './lib/types.ts'
 
 type Source = 'none' | 'demo' | 'analysis'
-const APP_VERSION = '0.7.1'
+const APP_VERSION = '0.7.2'
 const YT_RATES = [0.5, 0.75, 1, 1.25]
 const AUDIO_RATES = [0.5, 0.6, 0.75, 0.9, 1, 1.25]
 const CHORD_OK = /^(N|[A-G][#b]?(maj7|m7|sus2|sus4|dim|aug|add9|m|7|6|9)?(\/[A-G][#b]?)?)$/
@@ -90,7 +91,9 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null)
   const [optsOpen, setOptsOpen] = useState(false) // «⋯ Opciones»: todo lo que no es acordes, compás y letra
   const [lyricsNote, setLyricsNote] = useState<string | null>(null) // aviso cuando no se encontró la letra
-  const [lyricsQuery, setLyricsQuery] = useState('')
+  const [lyricsOpen, setLyricsOpen] = useState(false) // búsqueda de letra (solo letras)
+  const [chordsOpen, setChordsOpen] = useState(false) // menú «Acordes»
+  const [searchKey, setSearchKey] = useState(0) // «+ Nueva» vuelve a crear el buscador (limpio)
   const [markOpen, setMarkOpen] = useState(false) // marcar acordes sobre el video
   const [markKey, setMarkKey] = useState('C')
   const [ahead, setAhead] = useState(() => store.get('ahead', 0)) // adelantar en pantalla los cambios (s)
@@ -187,6 +190,7 @@ export default function App() {
     yt.pause(); au.pause(); clearSong()
     setVideoId(null); if (audioUrl) URL.revokeObjectURL(audioUrl); setAudioUrl(null); setAudioName(''); setMode('youtube')
     setLoop(null); setRate(1); setNotice(null); setJobErr(null); setMarkOpen(false); setSearchOpen(true); setOptsOpen(false); setLyricCands(null); setLyricsNote(null)
+    setSearchKey((k) => k + 1); setLyricsOpen(false); setChordsOpen(false); setPasteOpen(false); setPasteText(''); setSearchHint('')
   }
   function pickVideo(v: { id: string; title?: string }) {
     setVideoId(v.id); setFocusIdx(null); setLoop(null); setRate(1)
@@ -278,7 +282,14 @@ export default function App() {
       songRef.current = s; setSong(s); setBase([]); setUndo([]); setSource('analysis'); setOffset(0); setAdvanced(false); setFocusIdx(null)
       saveSong(s).then(refreshSongs).catch((e: Error) => setNotice(e.message))
     }
-    setLyricCands(null); setLyricsNote(null)
+    setLyricCands(null); setLyricsNote(null); setLyricsOpen(false)
+  }
+  /** Letra pegada a mano. */
+  function pasteLyrics(text: string) {
+    const cur = songRef.current ?? ensureVideoSong()
+    if (!cur) { setNotice('Primero elegí un video o un archivo para esta canción.'); return }
+    persist({ lyrics: pastedLyrics(text, cur.filename), lyricsOffset: 0, lyricsAnchors: [] })
+    setLyricCands(null); setLyricsNote(null); setLyricsOpen(false)
   }
   /** Canción para el video abierto (la actual si corresponde, o una nueva sin acordes todavía). */
   function ensureVideoSong(): Song | null {
@@ -306,9 +317,15 @@ export default function App() {
     setBase(segs); setUndo([]); setSource('analysis'); setFocusIdx(null); setMarkOpen(false); setPasteOpen(false); setPasteText(''); setNotice(null); setAdvanced(true)
     return true
   }
-  const songbookQuery = () => { const cur = songRef.current; return cur?.lyrics ? `${cur.lyrics.artistName} ${cur.lyrics.trackName}` : searchHint || cleanTitle(yt.title || cur?.filename || '') }
+  const songbookQuery = () => {
+    const cur = songRef.current
+    if (cur?.lyrics?.artistName) return `${cur.lyrics.artistName} ${cur.lyrics.trackName}`
+    if (mode === 'youtube' && yt.title) return parseVideoTitle(yt.title).query
+    if (cur?.audio) return cleanTitle(cur.filename)
+    return cleanTitle(cur?.filename ?? '') || searchHint
+  }
   /** Abre el buscador directamente en la búsqueda de letra de esta canción. */
-  function askLyrics() { const q = songbookQuery(); setSearchOpen(true); setLyricsQuery((p) => (p === q ? q + ' ' : q)) }
+  function askLyrics() { setLyricsOpen((x) => !x); setChordsOpen(false) }
   async function openSongbook() {
     const q = songbookQuery()
     if (!q) { setPasteOpen(true); return }
@@ -419,7 +436,7 @@ export default function App() {
   }, [wantChords, song?.lyrics, lyricsTried, lyricCands, videoId]) // eslint-disable-line react-hooks/exhaustive-deps
   // Letra automática: con el título del video (o el nombre del archivo analizado) se busca en LRCLIB. Si una versión coincide en
   // título y duración (±3 s) se guarda sola en la canción abierta; si no, se ofrecen hasta 3 para elegir. Nunca pisa una letra elegida.
-  const lyrName = mode === 'youtube' && videoId ? (yt.title || searchHint) : song?.audio ? song.filename : ''
+  const lyrName = mode === 'youtube' && videoId ? yt.title : song?.audio ? song.filename : ''
   const lyrDur = mode === 'youtube' && videoId ? yt.duration : song?.duration ?? 0
   const wantsLyrics = !!lyrName && lyrDur > 0 && (!song || song.lyrics === undefined) && (mode !== 'youtube' || !song || !song.settings.videoId || song.settings.videoId === videoId)
   useEffect(() => {
@@ -427,7 +444,8 @@ export default function App() {
     const key = `${song?.id ?? '-'}|${lyrName}`
     if (lyricAsked.current === key) return
     lyricAsked.current = key
-    const queries = [...new Set((mode === 'youtube' ? [cleanTitle(yt.title), searchHint] : [cleanTitle(lyrName)]).map((x) => x.trim()).filter((x) => x.length >= 3))]
+    const want = mode === 'youtube' ? parseVideoTitle(yt.title || searchHint) : { ...parseVideoTitle(lyrName), artist: parseVideoTitle(lyrName).artist }
+    const queries = [...new Set([want.query, want.title].map((x) => x.trim()).filter((x) => x.length >= 3))]
     if (!queries.length) return
     const attempt = async (q: string) => { try { return await searchLyrics(q) } catch { await new Promise((r) => setTimeout(r, 1500)); return searchLyrics(q) } }
     void (async () => {
@@ -437,14 +455,12 @@ export default function App() {
         try { res = await attempt(q) } catch { failed = true; continue }
         if (lyricAsked.current !== key) return
         pool = pool.concat(res)
-        const ranked = rankResults(res, q, lyrDur)
-        // el título coincide (≥ 85 %) y la letra tiene tiempos: se usa aunque la duración sea distinta (intro o versión en vivo se ajustan con «Empezó a cantar»)
-        const sure = pickAuto(res, q, lyrDur) ?? ranked.filter((r) => r.syncedLyrics && matchScore(r, q) >= 0.85)
-          .sort((a, b) => Math.abs((a.duration ?? 0) - lyrDur) - Math.abs((b.duration ?? 0) - lyrDur))[0] ?? null
+        // se elige sola solo si coincide el título y además el artista o la duración (±3 s); si no, se ofrece la lista
+        const sure = pickConfident(res, want, lyrDur)
         if (sure) { attachLyrics(sure); setLyricsTried(true); return }
       }
       if (lyricAsked.current !== key) return
-      const ranked = rankResults(pool, queries[0], lyrDur).slice(0, 3)
+      const ranked = rankResults(pool, want.query, lyrDur).slice(0, 3)
       setLyricCands(ranked.length ? ranked : null)
       setLyricsNote(ranked.length ? null : failed ? 'No se pudo buscar la letra (LRCLIB no respondió).' : 'No encontré la letra de esta canción.')
       setLyricsTried(true)
@@ -513,7 +529,7 @@ export default function App() {
               <input value={ytKey} onChange={(e) => setYtKey(e.target.value.trim())} autoComplete="off" className="mt-1 min-h-11 w-full rounded-lg border border-line bg-panel px-3" /></label>
           </div>
         )}
-        {searchOpen && <SearchPanel onPick={(v) => { setSearchHint(""); setWantChords(hasWebPicker()); setLyricsTried(false); pickVideo(v); setSearchOpen(false) }} onLyrics={attachLyrics} onVideoSearch={searchVideo} recent={recent} apiKey={ytKey} lyricsQuery={lyricsQuery} />}
+        {searchOpen && <SearchPanel key={searchKey} onPick={(v) => { setSearchHint(""); setWantChords(hasWebPicker()); setLyricsTried(false); pickVideo(v); setSearchOpen(false) }} onLyrics={attachLyrics} onVideoSearch={searchVideo} recent={recent} apiKey={ytKey} />}
       </header>
 
       <main className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
@@ -525,36 +541,47 @@ export default function App() {
             alt={alt} onAlt={(c) => setAlt((a) => ({ ...a, [c]: (a[c] ?? 0) + 1 }))} onSelect={selectChord} />
         </>}
         {song?.lyrics && <LyricsView lyrics={song.lyrics} time={viewTime} offset={song.lyricsOffset ?? 0} anchors={song.lyricsAnchors ?? []}
-          onAdjust={adjustLyrics} onSeek={(t) => { if (hasMedia) player.seek(Math.max(0, t + eo)) }} onRemove={() => persist({ lyrics: null, lyricsAnchors: [] })} />}
-        {lyricCands && !song?.lyrics && (
+          onAdjust={adjustLyrics} onSeek={(t) => { if (hasMedia) player.seek(Math.max(0, t + eo)) }} onRemove={() => persist({ lyrics: null, lyricsAnchors: [] })}
+          onChange={() => { setLyricsOpen(true); setChordsOpen(false) }} />}
+        {lyricCands && !song?.lyrics && !lyricsOpen && (
           <section className={box}>
             <h2 className="text-sm font-semibold">¿Es alguna de estas letras?</h2>
             <ul className="mt-1 space-y-1">{lyricCands.map((r) => (
               <li key={r.id}><button className="w-full rounded-lg border border-line bg-bg p-2 text-left text-sm" onClick={() => attachLyrics(r)}>
                 <b>{r.trackName}</b> · {r.artistName}{r.duration ? ` · ${Math.floor(r.duration / 60)}:${String(Math.round(r.duration % 60)).padStart(2, '0')}` : ''}{r.syncedLyrics ? '' : ' · sin tiempos'}</button></li>))}
             </ul>
-            <button className={`mt-2 ${small}`} onClick={() => { setLyricCands(null); if (songRef.current) persist({ lyrics: null }) }}>Ninguna</button>
-          </section>)}
-        {lyricsNote && !song?.lyrics && !lyricCands && (
-          <p className="flex flex-wrap items-center gap-2 text-sm text-mute">{lyricsNote}
-            <button className={small} onClick={askLyrics}>Buscar la letra</button></p>)}
-        {!segments.length && (hasMedia || song) && (
-          <section className={box}>
-            <h2 className="font-semibold">Sin acordes todavía</h2>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {hasWebPicker() && <button className={`${small} bg-accent font-semibold text-accent-fg`} disabled={importing} onClick={() => void openSongbook()}>{importing ? 'Abriendo…' : 'Buscar en cancioneros'}</button>}
-              {!hasWebPicker() && songbookQuery() && <a className={`${small} inline-flex items-center`} href={songbookSearchUrl(songbookQuery())} target="_blank" rel="noreferrer">Buscar cifrado ↗</a>}
-              <button className={small} onClick={() => setPasteOpen((x) => !x)}>Pegar cifrado</button>
-              <button className={small} onClick={() => { setOptsOpen(true); setMarkOpen(false) }}>Analizar mi audio</button>
-              {mode === 'youtube' && videoId && <button className={small} onClick={() => setMarkOpen(true)}>Marcar a mano</button>}
+            <div className="mt-2 flex gap-2">
+              <button className={small} onClick={() => { setLyricCands(null); setLyricsOpen(true) }}>Ninguna: buscar otra</button>
+              <button className={small} onClick={() => { setLyricCands(null); if (songRef.current) persist({ lyrics: null }) }}>Sin letra</button>
             </div>
+          </section>)}
+        {lyricsNote && !song?.lyrics && !lyricCands && !lyricsOpen && <p className="text-sm text-mute">{lyricsNote} Tocá «Letra» para buscarla o pegarla.</p>}
+
+        {(hasMedia || song) && (
+          <div className="grid grid-cols-3 gap-2" role="group" aria-label="Acciones">
+            <button className={`${small} ${lyricsOpen ? 'bg-accent text-accent-fg' : ''}`} onClick={askLyrics} aria-expanded={lyricsOpen}>Letra</button>
+            <button className={`${small} ${chordsOpen || (!segments.length && !lyricsOpen) ? 'bg-accent text-accent-fg' : ''}`} onClick={() => { setChordsOpen((x) => !x); setLyricsOpen(false) }} aria-expanded={chordsOpen}>Acordes</button>
+            <button className={small} onClick={() => setOptsOpen((x) => !x)} aria-expanded={optsOpen}>{optsOpen ? 'Ocultar' : '⋯ Opciones'}</button>
+          </div>)}
+        {lyricsOpen && <LyricsSearch key={`${searchKey}-${song?.id ?? ''}`} initial={songbookQuery()} onPick={attachLyrics} onPaste={pasteLyrics} onClose={() => setLyricsOpen(false)} />}
+        {(chordsOpen || (!segments.length && (hasMedia || song) && !lyricsOpen)) && (
+          <section className={`${box} space-y-3`} aria-label="Acordes">
+            <h2 className="font-semibold">{segments.length ? 'Cambiar los acordes' : 'Sin acordes todavía'}</h2>
+            <div className="flex flex-wrap gap-2">
+              {!song?.audio && hasWebPicker() && <button className={`${small} bg-accent font-semibold text-accent-fg`} disabled={importing} onClick={() => void openSongbook()}>{importing ? 'Abriendo…' : 'Buscar en cancioneros'}</button>}
+              {!song?.audio && !hasWebPicker() && songbookQuery() && <a className={`${small} inline-flex items-center`} href={songbookSearchUrl(songbookQuery())} target="_blank" rel="noreferrer">Buscar cifrado ↗</a>}
+              {!song?.audio && <button className={small} onClick={() => setPasteOpen((x) => !x)}>Pegar cifrado</button>}
+              {mode === 'youtube' && videoId && !song?.audio && <button className={small} onClick={() => setMarkOpen(true)}>Marcar a mano</button>}
+            </div>
+            <div><h3 className="mb-1 text-sm font-semibold">Analizar mi audio con la IA (lo más preciso)</h3>
+              <AudioPanel job={job} error={jobErr} onFile={pickFile} onCancel={() => cancelRef.current?.()} /></div>
           </section>)}
         {pasteOpen && (
           <section className={box}>
             <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} rows={8} placeholder={'Pegá la letra con los acordes arriba, por ejemplo:\nAm          G\nPrimera línea de la canción'}
               className="w-full rounded-lg border border-line bg-bg p-2 font-mono text-xs" aria-label="Cifrado" />
             <div className="mt-2 flex gap-2">
-              <button className={small} disabled={!pasteText.trim()} onClick={() => importCifrado(pasteText)}>Usar estos acordes</button>
+              <button className={small} disabled={!pasteText.trim()} onClick={() => { if (importCifrado(pasteText)) setChordsOpen(false) }}>Usar estos acordes</button>
               <button className={small} onClick={() => setPasteOpen(false)}>Cerrar</button>
             </div>
           </section>)}
@@ -565,75 +592,82 @@ export default function App() {
             <MarkPanel time={yt.time} used={[...new Set(segments.map((x) => x.chord))]} onMark={markChord} onUndo={undoLast} canUndo={!!undo.length} keyName={markKey} onKey={setMarkKey} />
           </section>)}
 
-        <button className={`${small} w-full`} onClick={() => setOptsOpen((x) => !x)} aria-expanded={optsOpen}>{optsOpen ? 'Ocultar opciones' : '⋯ Opciones'}</button>
         {optsOpen && (
-          <section className={`${box} space-y-4 text-sm`}>
-            <div className="grid grid-cols-2 gap-2">
-              <Stepper label="Transponer" value={transpose} fmt={(v) => (v > 0 ? `+${v}` : `${v}`)} onDec={() => setTranspose((t) => Math.max(-11, t - 1))} onInc={() => setTranspose((t) => Math.min(11, t + 1))} />
-              <Stepper label="Cejilla (traste)" value={capo} fmt={(v) => (v ? `${v}` : 'sin')} onDec={() => setCapo((c) => Math.max(0, c - 1))} onInc={() => setCapo((c) => Math.min(11, c + 1))} />
-              <label className="flex items-center gap-2 rounded-lg border border-line bg-panel p-2"><input type="checkbox" checked={!advanced} disabled={!song || (song.kind === 'analysis' && !!song.audio && !song.advanced)} onChange={(e) => toggleAdvanced(!e.target.checked)} /> Acordes simplificados</label>
-              <label className="flex items-center gap-2 rounded-lg border border-line bg-panel p-2"><input type="checkbox" checked={hideNames} onChange={(e) => setHideNames(e.target.checked)} /> Ocultar nombres</label>
-            </div>
-            {capo > 0 && <p className="text-xs text-mute">Con cejilla en el traste {capo} se muestran las formas a tocar; el sonido sigue siendo el de la canción.</p>}
-            {mode === 'youtube' && source === 'analysis' && song?.kind === 'analysis' && (
-              <div className="flex flex-wrap items-center gap-2">
-                <span>Desfase {offset.toFixed(1)} s</span>
-                <button className={small} onClick={() => setOffset((o) => Math.round((o - 0.1) * 10) / 10)}>−0,1</button>
-                <button className={small} onClick={() => setOffset((o) => Math.round((o + 0.1) * 10) / 10)}>+0,1</button>
-                <button className={small} disabled={shownIdx === null} onClick={alignToVideo}>Alinear: este acorde empieza ahora</button>
-              </div>)}
-            {segments.length > 0 && !song?.audio && (
-              <div className="flex flex-wrap gap-2">
-                <span className="w-full text-xs text-mute">Cambiar los acordes</span>
-                {hasWebPicker() && <button className={small} disabled={importing} onClick={() => void openSongbook()}>Buscar en cancioneros</button>}
-                <button className={small} onClick={() => setPasteOpen(true)}>Pegar cifrado</button>
-                {mode === 'youtube' && videoId && <button className={small} onClick={() => setMarkOpen(true)}>Marcar a mano</button>}
-              </div>)}
-            {!song?.lyrics && (song || videoId) && <button className={small} onClick={askLyrics}>Buscar la letra</button>}
-            {song?.audio && song.kind !== 'manual' && song.method !== NMETHOD && !job && (
-              <p className="text-xs">Esta canción se analizó con un motor anterior. <button className="underline" onClick={() => song.audio && pickFile(new File([song.audio], song.filename, { type: song.audio.type || 'audio/mpeg' }), song)}>Volver a analizar con el motor nuevo</button> (se conservan la letra y el video; se pierden las correcciones de acordes).</p>)}
-            <div><h3 className="mb-1 font-semibold">Analizar mi audio (IA)</h3>
-              <AudioPanel job={job} error={jobErr} onFile={pickFile} onCancel={() => cancelRef.current?.()} /></div>
-            {seg && shownIdx !== null && source !== 'none' && (
-              <div><h3 className="mb-2 font-semibold">Editar acorde {shownIdx + 1}</h3>
-                <div className="grid grid-cols-3 gap-2">
-                  <label className="col-span-3">Acorde (ej. Am, F#, E7, Dsus4, N)
-                    <input key={`c${shownIdx}${seg.chord}`} defaultValue={seg.chord} onBlur={(e) => e.target.value.trim() !== seg.chord && applyChord(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} className="mt-1 min-h-11 w-full rounded-lg border border-line bg-bg px-3" /></label>
-                  <label>Inicio (s)
-                    <input key={`s${shownIdx}${seg.start}`} inputMode="decimal" defaultValue={seg.start} onBlur={(e) => num(e.target.value, (t) => moveStart(base, shownIdx, t))} className="mt-1 min-h-11 w-full rounded-lg border border-line bg-bg px-2" /></label>
-                  <label>Fin (s)
-                    <input key={`e${shownIdx}${seg.end}`} inputMode="decimal" defaultValue={seg.end} onBlur={(e) => num(e.target.value, (t) => moveEnd(base, shownIdx, t))} className="mt-1 min-h-11 w-full rounded-lg border border-line bg-bg px-2" /></label>
-                  <span />
-                  <button className={small} onClick={() => commit(moveStart(base, shownIdx, fileTime))}>Inicio = ahora</button>
-                  <button className={small} onClick={() => commit(moveEnd(base, shownIdx, fileTime))}>Fin = ahora</button>
-                  <button className={small} onClick={() => commit(splitAt(base, shownIdx, fileTime))}>Dividir aquí</button>
-                  <button className={small} onClick={() => commit(removeAt(base, shownIdx))}>Eliminar</button>
-                  <button className={small} onClick={undoLast} disabled={!undo.length}>Deshacer</button>
-                  {original && song?.kind !== 'manual' && <button className={small} onClick={restore}>Restaurar original</button>}
+          <section className={`${box} space-y-2 text-sm`} aria-label="Opciones">
+            <details className="rounded-lg border border-line p-2" open>
+              <summary className="min-h-9 cursor-pointer font-semibold">Para tocar</summary>
+              <div className="mt-2 space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <Stepper label="Transponer" value={transpose} fmt={(v) => (v > 0 ? `+${v}` : `${v}`)} onDec={() => setTranspose((t) => Math.max(-11, t - 1))} onInc={() => setTranspose((t) => Math.min(11, t + 1))} />
+                  <Stepper label="Cejilla (traste)" value={capo} fmt={(v) => (v ? `${v}` : 'sin')} onDec={() => setCapo((c) => Math.max(0, c - 1))} onInc={() => setCapo((c) => Math.min(11, c + 1))} />
+                  <label className="flex items-center gap-2 rounded-lg border border-line bg-panel p-2"><input type="checkbox" checked={!advanced} disabled={!song || (song.kind === 'analysis' && !!song.audio && !song.advanced)} onChange={(e) => toggleAdvanced(!e.target.checked)} /> Acordes simplificados</label>
+                  <label className="flex items-center gap-2 rounded-lg border border-line bg-panel p-2"><input type="checkbox" checked={hideNames} onChange={(e) => setHideNames(e.target.checked)} /> Ocultar nombres</label>
                 </div>
-              </div>)}
-            {source === 'analysis' && song && <p className="text-xs text-mute">«{song.filename}» · {song.method}.{info ? ` ${info}.` : ''}{song.lowConfidence && ' Confianza media baja: revisá los acordes marcados con ≈.'}</p>}
-            {hasMedia && !song && <button className={small} onClick={() => { setBase(DEMO_SEGMENTS); setSource('demo'); songRef.current = null; setSong(null); setUndo([]) }}>Ver secuencia de demostración</button>}
-            <button className={small} onClick={() => setDrawer(true)}>Ver Mi cancionero ({songs.length})</button>
+                {capo > 0 && <p className="text-xs text-mute">Con cejilla en el traste {capo} se muestran las formas a tocar; el sonido sigue siendo el de la canción.</p>}
+                {hasMedia && <PlayExtras onSeek={player.seek} onSkip={player.skip} onVolume={player.setVolume} rate={rate} rates={mode === 'audio' ? AUDIO_RATES : YT_RATES}
+                  onRate={(r) => { setRate(r); player.setRate(r) }} loop={loop} onLoopCycle={loopCycle} />}
+              </div>
+            </details>
+            <details className="rounded-lg border border-line p-2">
+              <summary className="min-h-9 cursor-pointer font-semibold">Ajustar</summary>
+              <div className="mt-2 space-y-3">
+                {mode === 'youtube' && source === 'analysis' && song?.kind === 'analysis' && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>Desfase {offset.toFixed(1)} s</span>
+                    <button className={small} onClick={() => setOffset((o) => Math.round((o - 0.1) * 10) / 10)}>−0,1</button>
+                    <button className={small} onClick={() => setOffset((o) => Math.round((o + 0.1) * 10) / 10)}>+0,1</button>
+                    <button className={small} disabled={shownIdx === null} onClick={alignToVideo}>Alinear: este acorde empieza ahora</button>
+                  </div>)}
+                {seg && shownIdx !== null && source !== 'none' ? (
+                  <div><h3 className="mb-2 font-semibold">Editar acorde {shownIdx + 1}</h3>
+                    <div className="grid grid-cols-3 gap-2">
+                      <label className="col-span-3">Acorde (ej. Am, F#, E7, Dsus4, N)
+                        <input key={`c${shownIdx}${seg.chord}`} defaultValue={seg.chord} onBlur={(e) => e.target.value.trim() !== seg.chord && applyChord(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} className="mt-1 min-h-11 w-full rounded-lg border border-line bg-bg px-3" /></label>
+                      <label>Inicio (s)
+                        <input key={`s${shownIdx}${seg.start}`} inputMode="decimal" defaultValue={seg.start} onBlur={(e) => num(e.target.value, (t) => moveStart(base, shownIdx, t))} className="mt-1 min-h-11 w-full rounded-lg border border-line bg-bg px-2" /></label>
+                      <label>Fin (s)
+                        <input key={`e${shownIdx}${seg.end}`} inputMode="decimal" defaultValue={seg.end} onBlur={(e) => num(e.target.value, (t) => moveEnd(base, shownIdx, t))} className="mt-1 min-h-11 w-full rounded-lg border border-line bg-bg px-2" /></label>
+                      <span />
+                      <button className={small} onClick={() => commit(moveStart(base, shownIdx, fileTime))}>Inicio = ahora</button>
+                      <button className={small} onClick={() => commit(moveEnd(base, shownIdx, fileTime))}>Fin = ahora</button>
+                      <button className={small} onClick={() => commit(splitAt(base, shownIdx, fileTime))}>Dividir aquí</button>
+                      <button className={small} onClick={() => commit(removeAt(base, shownIdx))}>Eliminar</button>
+                      <button className={small} onClick={undoLast} disabled={!undo.length}>Deshacer</button>
+                      {original && song?.kind !== 'manual' && <button className={small} onClick={restore}>Restaurar original</button>}
+                    </div>
+                  </div>) : <p className="text-xs text-mute">Tocá un acorde del carrusel para editarlo.</p>}
+              </div>
+            </details>
+            <details className="rounded-lg border border-line p-2">
+              <summary className="min-h-9 cursor-pointer font-semibold">Otros</summary>
+              <div className="mt-2 space-y-2">
+                {song?.audio && song.kind !== 'manual' && song.method !== NMETHOD && !job && (
+                  <p className="text-xs">Esta canción se analizó con un motor anterior. <button className="underline" onClick={() => song.audio && pickFile(new File([song.audio], song.filename, { type: song.audio.type || 'audio/mpeg' }), song)}>Volver a analizar con el motor nuevo</button> (se conservan la letra y el video; se pierden las correcciones de acordes).</p>)}
+                {source === 'analysis' && song && <p className="text-xs text-mute">«{song.filename}» · {song.method}.{info ? ` ${info}.` : ''}{song.lowConfidence && ' Confianza media baja: revisá los acordes marcados con ≈.'}</p>}
+                {hasMedia && !song && <button className={small} onClick={() => { setBase(DEMO_SEGMENTS); setSource('demo'); songRef.current = null; setSong(null); setUndo([]) }}>Ver secuencia de demostración</button>}
+                <button className={small} onClick={() => setDrawer(true)}>Ver Mi cancionero ({songs.length})</button>
+              </div>
+            </details>
           </section>)}
+        {!hasMedia && !song && (
+          <div className="space-y-2 text-sm text-mute">
+            <p>Buscá una canción arriba, o analizá un MP3/WAV tuyo:</p>
+            <AudioPanel job={job} error={jobErr} onFile={pickFile} onCancel={() => cancelRef.current?.()} />
+          </div>)}
       </main>
 
       <footer className="shrink-0 border-t border-line bg-panel px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2">
         {videoId && audioUrl && (
-          <div className="mb-2 flex gap-2" role="group" aria-label="Fuente de reproducción">
-            <button className={`${small} ${mode === 'audio' ? 'bg-accent text-accent-fg' : ''}`} onClick={() => setMode('audio')}>Mi archivo</button>
-            <button className={`${small} ${mode === 'youtube' ? 'bg-accent text-accent-fg' : ''}`} onClick={() => setMode('youtube')}>Video de YouTube</button>
+          <div className="mb-1 flex gap-2 text-xs" role="group" aria-label="Fuente de reproducción">
+            <button className={`min-h-8 rounded-lg border border-line px-2 ${mode === 'audio' ? 'bg-accent text-accent-fg' : ''}`} onClick={() => setMode('audio')}>Mi archivo</button>
+            <button className={`min-h-8 rounded-lg border border-line px-2 ${mode === 'youtube' ? 'bg-accent text-accent-fg' : ''}`} onClick={() => setMode('youtube')}>Video</button>
           </div>
         )}
         {player.error && <p role="alert" className="text-sm text-red-500">{player.error}{mode === 'youtube' && videoId && <> <a className="underline" href={`https://www.youtube.com/watch?v=${videoId}`} target="_blank" rel="noreferrer">Abrir en YouTube</a></>}</p>}
         {hasMedia ? (
-          <Controls time={player.time} duration={player.duration} playing={player.playing}
-            onPlay={player.play} onPause={player.pause} onSeek={player.seek} onSkip={player.skip}
-            onVolume={player.setVolume} rate={rate} rates={mode === 'audio' ? AUDIO_RATES : YT_RATES}
-            onRate={(r) => { setRate(r); player.setRate(r) }} loop={loop} onLoopCycle={loopCycle}>
-            <div className={`aspect-video w-full overflow-hidden rounded-lg bg-black ${mode === 'audio' || !videoId ? 'hidden' : ''}`} ref={yt.hostRef} />
-            {(mode === 'audio' || !videoId) && audioUrl && <p className="rounded-lg bg-bg p-2 text-center text-xs text-mute">Reproduciendo tu archivo: {audioName}</p>}
+          <Controls time={player.time} duration={player.duration} playing={player.playing} onPlay={player.play} onPause={player.pause} onSeek={player.seek}>
+            <div className={`aspect-video w-32 shrink-0 overflow-hidden rounded-lg bg-black ${mode === 'audio' || !videoId ? 'hidden' : ''}`} ref={yt.hostRef} />
           </Controls>
         ) : <p className="py-2 text-center text-sm text-mute">Buscá una canción o elegí un MP3/WAV para empezar.</p>}
       </footer>

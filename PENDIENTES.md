@@ -60,3 +60,46 @@
 - Todo queda guardado junto en Mi cancionero (video + letra + acordes); «Empezó a cantar» ajusta letra y acordes juntos.
 - La IA con audio propio sigue igual. Pendientes del motor: Mi de paso («Mi semilla»), D7 cortos («Carta»), detección del canto.
 - No se implementa captura del audio de YouTube.
+
+## 8. Prueba del usuario con v0.7.1 (HECHOS en v0.7.2: 2, 3, 4, 6, 7, 8, 9 — falta probar en el teléfono)
+1. Canciones poco conocidas sin cifrado en la web → evaluar: IA con audio propio (ya existe), modo «Siguiente» (pegar solo la
+   secuencia de acordes y tocar en cada cambio), compartir canciones entre usuarios (exportar/importar archivo).
+2. A veces la letra encontrada NO es la de la canción → elección automática más estricta (título + artista + duración),
+   mostrar cuál se eligió y poder cambiarla con un toque («No es esta letra» → lista de alternativas).
+3. «Buscar la letra» lleva al buscador de videos → tiene que abrir una búsqueda SOLO de letras (lista de LRCLIB) y nada más.
+4. Barra de reproducción mínima:
+   - con archivo (sin video): solo play/pausa (mismo botón) y la línea de tiempo; nada más.
+   - con video: el video pequeño + play/pausa + línea de tiempo.
+   - el resto (−10/−5/+5/+10, bucle, velocidad, volumen) pasa a «⋯ Opciones». Todo el espacio libre para acordes y letra.
+5. Revisar el fallo de la prueba automática «motor-ia» en GitHub Actions (falta el detalle del paso con ✘).
+6. Analizado el video del usuario (15:26, «Buenas Noches audio.mp3», Eduardo Darnauchans):
+   - Letra equivocada: con el nombre del archivo («Buenas Noches») se eligió sola «Buenas Noches – Say Mo» (2:05 contra 1:57).
+     Causa: la regla nueva acepta coincidencia solo de título aunque no haya artista ni coincida la duración. → Con solo el
+     título, NO elegir solo: ofrecer la lista. Elegir solo si coinciden título + artista, o título + duración ±3 s.
+   - «Buscar la letra» abrió el buscador con «Buenas Noches — Say Mo» (la letra equivocada); al corregir y tocar «Buscar» se abrió
+     YouTube (búsqueda de videos), no letras. → modo «buscar letra» propio: el botón Buscar busca SOLO letras mientras dure.
+   - «Buscar solo la letra» dio «LRCLIB respondió 503» varias veces seguidas → evaluar una segunda fuente de letras de reserva y
+     «Pegar letra» manual; mostrar el error con «Reintentar».
+   - Bien: compás y carrusel funcionan con la grilla; la letra espera en la intro («la letra empieza en 0:19»).
+   - Las opciones abiertas y el reproductor grande ocupan casi toda la pantalla (ver punto 4).
+7. La letra (y la búsqueda en el cancionero) tienen que basarse en el VIDEO elegido, no en lo que se escribió en el buscador.
+   - v0.7.1 ya busca la letra primero con el título del video, pero si no lo encuentra prueba con lo escrito (p. ej. solo
+     «Julieta Venegas»), y la búsqueda en el cancionero y el botón «Buscar la letra» todavía usan lo escrito antes que el título.
+   - Cambiar: usar solo el título del video (artista y canción separados por « - »; limpiar «(Video Oficial)», «Letra», «HD»,
+     «Mix -», etc.); lo escrito se usa solo si el video no trae título. Con archivo propio: el nombre del archivo.
+8. Separar lo que se usa siempre de las opciones avanzadas:
+   - Fila de acciones a mano, fuera de «⋯ Opciones» (botones chicos debajo de la letra): «Letra» (buscar / cambiar letra),
+     «Acordes» (buscar en cancionero / pegar / analizar mi audio).
+   - «⋯ Opciones» ordenado en grupos plegables: «Para tocar» (transponer, cejilla, simplificados, velocidad, bucle, saltos),
+     «Ajustar» (desfase, ajustes de letra, editar acordes), «Otros» (volver a analizar, demostración, Mi cancionero).
+9. «+ Nueva» no limpia el buscador: queda el texto anterior, los resultados y el error viejo (p. ej. «LRCLIB respondió 503»).
+   Causa: el buscador guarda su estado y «+ Nueva» no lo reinicia (sigue abierto, no se vuelve a crear). → Reiniciarlo por
+   completo (texto, resultados de letras y videos, errores) al tocar «+ Nueva»; lo mismo para la búsqueda de letra.
+
+## 9. PRÓXIMAS TANDAS (después de v0.7.2)
+- v0.7.3: estética (colores, tipografía, tamaños, pantalla de inicio).
+- Canciones sin cifrado en la web: modo «Siguiente» (pegar solo la secuencia de acordes) y compartir/exportar canciones.
+- Segunda fuente de letras de reserva cuando LRCLIB falla (evaluar).
+- Motor: Mi de paso en «Mi semilla», D7/Dm7 cortos en «Carta», Gmaj7/Cm7; detección automática del canto para la letra.
+- Firma fija de la APK (para actualizar sin desinstalar) + copia de seguridad de Mi cancionero.
+- Revisar el fallo de «motor-ia» en GitHub Actions (falta el detalle del paso con ✘).

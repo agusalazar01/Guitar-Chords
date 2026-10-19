@@ -31,6 +31,7 @@ import { Icon, Notebook } from './components/Art.tsx'
 import Splash from './components/Splash.tsx'
 import type { LyricResult } from './lib/lyrics.ts'
 import { parseYouTubeId } from './lib/youtube.ts'
+import { isEmptyDraft } from './lib/draft.ts'
 import type { Song } from './lib/songs.ts'
 import type { Segment } from './lib/types.ts'
 
@@ -203,14 +204,26 @@ export default function App() {
     setSearchKey((k) => k + 1); setLyricsOpen(false); setChordsOpen(false); setPasteOpen(false); setPasteText(''); setSearchHint('')
     setRetimeOpen(false); setStepMode(false); setStepIdx(0); setSeqOpen(false); setSeqText(''); setSeqName('')
   }
+  /** Deja la pantalla principal en blanco para una canción nueva (lo anterior sigue guardado en el cancionero). */
+  function resetScreenForNew(keepVideo: string) {
+    au.pause(); clearSong()
+    if (audioUrl) URL.revokeObjectURL(audioUrl)
+    setAudioUrl(null); setAudioName(''); setMode('youtube'); setVideoId(keepVideo)
+    lyricAsked.current = ''
+    setNotice(null); setJobErr(null); setMarkOpen(false); setOptsOpen(false); setLyricCands(null); setLyricsNote(null); setLyricsTried(false)
+    setLyricsOpen(false); setChordsOpen(false); setPasteOpen(false); setPasteText(''); setRetimeOpen(false); setStepMode(false); setStepIdx(0)
+    setSeqOpen(false); setSeqText(''); setSeqName('')
+  }
   function pickVideo(v: { id: string; title?: string }) {
     setVideoId(v.id); setFocusIdx(null); setLoop(null); setRate(1)
     const cur = songRef.current, linked = songs.find((s) => s.settings.videoId === v.id)
     if (linked) { // ya hay acordes guardados para este video (analizados o marcados): se abren solos
       if (cur?.id !== linked.id) openSong(linked, true); else setMode('youtube')
     } else {
-      if (cur && cur.kind === 'manual' && cur.settings.videoId && cur.settings.videoId !== v.id) clearSong() // los acordes marcados pertenecen a otro video
-      else if (cur && !cur.settings.videoId) persist({ settings: { ...cur.settings, videoId: v.id } }) // se une a la canción abierta
+      // Un borrador (solo letra, sin acordes, sin audio y sin video) se une al video elegido. Cualquier otra canción abierta
+      // ya quedó guardada en «Mi cancionero»: la pantalla principal se limpia para dejarla lista para la canción nueva.
+      if (cur && isEmptyDraft(cur)) persist({ settings: { ...cur.settings, videoId: v.id } })
+      else if (cur && !job) resetScreenForNew(v.id)
       if (!audioUrl || !songRef.current) setMode('youtube')
       if (source === 'demo') { setBase([]); setSource('none') }
       setMarkOpen(false)

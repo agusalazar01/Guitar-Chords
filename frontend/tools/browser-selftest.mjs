@@ -34,17 +34,28 @@ for (const [name, type] of [['Chromium (Chrome / WebView de Android)', chromium]
   await step('elegir un video por enlace', pick)
   await step('abrir «Marcar los acordes de este video»', () => page.getByRole('button', { name: 'Marcar los acordes de este video' }).click({ timeout: 10000 }))
   await step('marcar un acorde (C)', () => page.getByRole('button', { name: 'C', exact: true }).first().click({ timeout: 10000 }))
-  await step('aparece la canción marcada y queda guardada', async () => {
+  await step('aparece la canción marcada y queda en «Mi cancionero»', async () => {
     await page.getByText('acordes marcados a mano sobre el video').first().waitFor({ timeout: 10000 })
-    await page.getByText('marcada sobre video').first().waitFor({ timeout: 10000 })
+    await page.getByRole('button', { name: 'Abrir Mi cancionero' }).click()
+    await page.getByRole('dialog', { name: 'Mi cancionero' }).getByText('acordes marcados').first().waitFor({ timeout: 10000 })
+    await page.getByRole('button', { name: 'Cerrar' }).click()
   })
   await step('«+ Nueva» vuelve al inicio sin recargar', async () => {
-    await page.getByRole('button', { name: '+ Nueva' }).click()
+    await page.getByRole('button', { name: '+ Nueva', exact: true }).click()
     await page.getByText('Todavía no hay acordes').waitFor({ timeout: 10000 })
   })
   await step('al volver a elegir el video, sus acordes se abren solos', async () => {
     await pick(); await page.getByText('acordes marcados a mano sobre el video').first().waitFor({ timeout: 10000 })
   })
+  // Letras (LRCLIB) desde el navegador: si falla, la web no puede consultar LRCLIB (CORS); la APK usa la capa nativa y no depende de esto.
+  try {
+    await page.getByRole('button', { name: '+ Nueva', exact: true }).click()
+    await search.fill('guitarrero viejo zitarrosa'); await search.press('Enter')
+    await page.getByText('letra con tiempos').first().waitFor({ timeout: 20000 })
+    await page.getByText('letra con tiempos').first().click()
+    await page.getByText('letra de LRCLIB').first().waitFor({ timeout: 10000 })
+    console.log('  ✔ letras: búsqueda en LRCLIB desde el navegador y letra guardada (informativo)')
+  } catch (e) { console.log(`  ⚠ letras desde el navegador no funcionaron (informativo, no falla la prueba): ${e.message.split('\n')[0]}`) }
   if (errors.length) console.log('  errores de página (informativo):', errors.slice(0, 5).join(' | '))
   await browser.close()
 }

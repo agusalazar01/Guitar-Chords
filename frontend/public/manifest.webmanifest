@@ -1,7 +1,7 @@
 {
-  "name": "Guitar Chords",
-  "short_name": "Guitar Chords",
-  "description": "Acordes sincronizados y diagramas para practicar guitarra",
+  "name": "Mi Cancionero",
+  "short_name": "Mi Cancionero",
+  "description": "Tu cancionero: acordes sincronizados, letras y diagramas para guitarra",
   "lang": "es",
   "start_url": "./",
   "scope": "./",

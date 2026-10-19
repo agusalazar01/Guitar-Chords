@@ -1,5 +1,5 @@
 // Service worker: solo recursos estáticos de la app (no hay servidor propio). Rutas relativas: sirve en subcarpetas.
-const CACHE = 'guitar-chords-static-v2'
+const CACHE = 'mi-cancionero-static-v3'
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './manifest.webmanifest', './icons/icon-192.png']))); self.skipWaiting() })
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k))))); self.clients.claim() })
 self.addEventListener('fetch', (e) => {

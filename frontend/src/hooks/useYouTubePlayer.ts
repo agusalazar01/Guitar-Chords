@@ -32,11 +32,13 @@ export function useYouTubePlayer(videoId: string | null) {
   const [duration, setDuration] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [title, setTitle] = useState('') // título del video según el reproductor (para buscar la letra)
 
   useEffect(() => {
     if (!videoId) return
     let cancelled = false
-    setError(null); setTime(0); setDuration(0); setPlaying(false)
+    setError(null); setTime(0); setDuration(0); setPlaying(false); setTitle('')
+    const readTitle = (p: any) => { const d = p?.getVideoData?.(); if (d?.title) setTitle(d.author && !String(d.title).toLowerCase().includes(String(d.author).toLowerCase()) ? `${d.author} - ${d.title}` : d.title) }
     loadApi().then(() => {
       if (cancelled || !hostRef.current) return
       const el = document.createElement('div')
@@ -45,10 +47,10 @@ export function useYouTubePlayer(videoId: string | null) {
         videoId, width: '100%', height: '100%',
         playerVars: { playsinline: 1, rel: 0, modestbranding: 1 },
         events: {
-          onReady: (e: any) => setDuration(e.target.getDuration()),
+          onReady: (e: any) => { setDuration(e.target.getDuration()); readTitle(e.target) },
           onStateChange: (e: any) => {
             setPlaying(e.data === 1)
-            if (e.data === 1 || e.data === 5) setDuration(e.target.getDuration())
+            if (e.data === 1 || e.data === 5) { setDuration(e.target.getDuration()); readTitle(e.target) }
           },
           onError: (e: any) => setError(ERRORS[e.data] ?? 'No se pudo reproducir este video.'),
         },
@@ -73,7 +75,7 @@ export function useYouTubePlayer(videoId: string | null) {
   }, [duration])
 
   return {
-    hostRef, time, duration, playing, error, seek,
+    hostRef, time, duration, playing, error, seek, title,
     play: () => playerRef.current?.playVideo?.(),
     pause: () => playerRef.current?.pauseVideo?.(),
     skip: (d: number) => seek((playerRef.current?.getCurrentTime?.() ?? time) + d),

@@ -22,6 +22,7 @@ jobs:
         working-directory: frontend
         run: |
           npx cap add android
+          node scripts/android-patch.mjs
           npx cap sync android
       - name: Compilar APK (firmada con la clave de depuración)
         working-directory: frontend/android
@@ -34,7 +35,10 @@ jobs:
           unzip -l "$APK" > /tmp/apk.txt
           for f in AndroidManifest.xml classes.dex assets/public/index.html; do grep -q "$f" /tmp/apk.txt || { echo "Falta $f en la APK"; exit 1; }; done
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-          "$BT/aapt2" dump badging "$APK" | grep -q "package: name='app.guitarchords'"
+          "$BT/aapt2" dump badging "$APK" > /tmp/badging.txt
+          grep -q "package: name='app.guitarchords'" /tmp/badging.txt
+          grep -q "application-label:'Mi Cancionero'" /tmp/badging.txt || { echo "El nombre visible no es Mi Cancionero"; grep application-label /tmp/badging.txt; exit 1; }
+          "$BT/aapt2" dump xmltree --file AndroidManifest.xml "$APK" | grep -q "android.intent.action.SEND" || { echo "Falta compartir (SEND) en el manifiesto"; exit 1; }
           "$BT/apksigner" verify --verbose "$APK"
           ls -l "$APK"
       - name: Verificar que la APK lleva el mismo motor que la web (huellas SHA-256)
@@ -58,7 +62,7 @@ jobs:
           PY
           du -h "$APK"
       - uses: actions/upload-artifact@v4
-        with: { name: guitar-chords-debug-apk, path: frontend/android/app/build/outputs/apk/debug/app-debug.apk }
+        with: { name: mi-cancionero-debug-apk, path: frontend/android/app/build/outputs/apk/debug/app-debug.apk }
       - name: Publicar en Releases (descarga directa desde el teléfono)
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |

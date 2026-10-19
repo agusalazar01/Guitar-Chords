@@ -1,7 +1,30 @@
-# Guitar Chords (app Android local)
+# Mi Cancionero (app Android local; antes «Guitar Chords»)
 
-Reconoce acordes de tus MP3/WAV **en el propio teléfono**, los muestra sincronizados con la reproducción, con diagramas de
-guitarra, bucle, velocidad, transposición y edición. No hay servidor propio ni cuentas.
+Tu cancionero en el teléfono: busca canciones por nombre, guarda su **letra sincronizada**, reconoce acordes de tus MP3/WAV **en el
+propio teléfono** y los muestra con la reproducción (archivo o video de YouTube), con diagramas, bucle, velocidad, transposición y
+edición. No hay servidor propio ni cuentas. (El identificador interno de la APK sigue siendo `app.guitarchords` para conservar las
+canciones ya guardadas; el repositorio mantiene su nombre.)
+
+## Novedades de la v0.6.0
+- **Nombre «Mi Cancionero»** (ícono, encabezado, instalación).
+- **Menú ☰ «Mi cancionero»**: todas las canciones guardadas, con filtro, renombrar, borrar, «+ Nueva canción» y **orden propio**
+  (arrastrando la manija ⠿ o con ↑ ↓). Las canciones quedan hasta que las borrás.
+- **Buscador por nombre** (lupa): «guitarrero viejo zitarrosa» busca a la vez:
+  - **Canción y letra en LRCLIB** (gratis, sin clave ni cuenta): lista de versiones con disco, duración y si la letra tiene tiempos.
+    Al elegir una, la letra se guarda en la canción abierta o crea una entrada nueva en el cancionero (todavía sin acordes).
+  - **Videos de YouTube**: con tu clave propia aparecen en la app; sin clave, el botón «Buscar en YouTube» abre YouTube con la
+    búsqueda hecha y, **en la APK**, desde el video tocás **Compartir → Mi Cancionero** y vuelve a la app con ese video.
+- **Letra debajo del compás**: línea actual resaltada y la siguiente; «Ver toda» (tocar una línea salta ahí); corrimiento ±¼ s y
+  «La próxima línea empieza ahora» para ajustarla a otra versión.
+- **Letra automática**: al abrir un video (con su título) o analizar un MP3 (con el nombre del archivo) se busca la letra; si una
+  versión coincide en título y duración (±3 s) se guarda sola, si no se ofrecen hasta 3 para elegir. Nunca reemplaza una letra elegida.
+- **Analizar un MP3 con una canción abierta que todavía no tiene acordes** (creada desde la letra o el video) completa esa misma canción.
+
+Qué está verificado: pruebas unitarias del formato LRC, limpieza de títulos y elección automática; tipos de TypeScript. Lo demás se
+verifica en GitHub Actions (compilación, prueba de interfaz en Chromium y la APK con el nombre y el «compartir» en el manifiesto).
+**No verificado**: el «Compartir → Mi Cancionero» real en un teléfono y si la web (GitHub Pages) puede consultar LRCLIB desde el
+navegador (depende de que LRCLIB permita CORS; la prueba de Actions lo informa). En la APK la consulta va por la capa nativa.
+Las letras tienen derechos de autor: LRCLIB es una base comunitaria; la app solo las guarda en tu teléfono para uso personal.
 
 ## Qué funciona sin Internet / qué necesita Internet
 | Función | Internet |
@@ -11,6 +34,7 @@ guitarra, bucle, velocidad, transposición y edición. No hay servidor propio ni
 | Diagramas, transposición, edición/restauración de acordes y tiempos | No |
 | Canciones guardadas, ajustes, preferencias (IndexedDB / localStorage del teléfono) | No |
 | Reproducir un video de YouTube (reproductor oficial) | **Sí** (los datos van a YouTube/Google) |
+| Buscar canción y letra (LRCLIB) | **Sí** (consulta a lrclib.net, sin clave ni cuenta) |
 | Buscar en YouTube | **Sí**: requiere tu propia clave de YouTube Data API v3 (opcional, Ajustes); la consulta y la clave se envían a Google. Sin clave, pegá un enlace |
 
 Servidores propios: **ninguno**. El audio nunca sale del teléfono. Por seguridad, la clave de YouTube no se incluye en la APK:

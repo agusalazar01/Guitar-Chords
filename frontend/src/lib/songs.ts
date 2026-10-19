@@ -1,11 +1,14 @@
 /** Almacenamiento local persistente (IndexedDB): canciones, acordes originales y corregidos, ajustes y el audio. */
 import type { Segment } from './types.ts'
+import type { SongLyrics } from './lyrics.ts'
 
 export interface SongSettings { videoId: string | null; transpose: number; offset: number; capo?: number; advanced?: boolean }
 export interface Song {
   id: string; filename: string; createdAt: number; duration: number; method: string; lowConfidence: boolean
   original: Segment[]; corrections: Segment[] | null; settings: SongSettings; audio: Blob | null // null = acordes marcados a mano sobre un video (sin audio)
   kind?: 'analysis' | 'manual'
+  order?: number // posición en «Mi cancionero» (menor = más arriba)
+  lyrics?: SongLyrics | null; lyricsOffset?: number // letra (LRCLIB o propia) y su corrimiento en segundos
   beats?: number[]; bpm?: number | null; downbeat?: number; beatsPerBar?: number; key?: string | null; advanced?: Segment[] // análisis v0.3
 }
 
@@ -33,5 +36,15 @@ async function tx<T>(mode: IDBTransactionMode, f: (s: IDBObjectStore) => IDBRequ
 export const saveSong = (s: Song) => tx('readwrite', (o) => o.put(s)).then(() => undefined)
 export const getSong = (id: string) => tx<Song | undefined>('readonly', (o) => o.get(id))
 export const deleteSong = (id: string) => tx('readwrite', (o) => o.delete(id)).then(() => undefined)
-export const listSongs = async (): Promise<Song[]> => ((await tx<Song[]>('readonly', (o) => o.getAll())) ?? []).sort((a, b) => b.createdAt - a.createdAt)
+/** Orden del cancionero: el elegido por el usuario; las canciones sin posición (anteriores a v0.6) van por fecha, las nuevas arriba. */
+export const sortSongs = (list: Song[]) => [...list].sort((a, b) => (a.order ?? -a.createdAt / 1e12) - (b.order ?? -b.createdAt / 1e12) || b.createdAt - a.createdAt)
+export const listSongs = async (): Promise<Song[]> => sortSongs((await tx<Song[]>('readonly', (o) => o.getAll())) ?? [])
+/** Posición para una canción nueva: arriba de todas. */
+export const topOrder = (list: Song[]) => Math.min(0, ...list.map((s) => s.order ?? -s.createdAt / 1e12)) - 1
+/** Guarda un nuevo orden (lista completa en el orden deseado). */
+export async function saveOrder(list: Song[]): Promise<Song[]> {
+  const out = list.map((s, i) => ({ ...s, order: i }))
+  for (const s of out) await saveSong(s)
+  return out
+}
 export const requestPersistence = () => navigator.storage?.persist?.().catch(() => false)

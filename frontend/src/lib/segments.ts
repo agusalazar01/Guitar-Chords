@@ -60,3 +60,34 @@ export function markChordAt(segs: Segment[], t: number, chord: string, duration:
   const split = splitAt(out, i, v)
   return split === out ? out : setChordAt(split, i + 1, chord)
 }
+
+/** Próximo cambio a marcar en «Marcar cambios»: el primer acorde (no silencio) que empieza después del que suena en t. */
+export function nextChange(segs: Segment[], t: number): number {
+  let cur = -1
+  for (let i = 0; i < segs.length; i++) if (segs[i].start <= t) cur = i
+  for (let i = cur + 1; i < segs.length; i++) if (segs[i].chord !== 'N') return i
+  return -1
+}
+
+/** «Acá cambia»: el acorde j pasa a empezar en t y todo lo que sigue se corre lo mismo (mantiene sus duraciones hasta que el
+ *  usuario marque el próximo cambio). Lo anterior termina en t; los silencios que quedan en el medio se quitan. null si t cae
+ *  antes del comienzo del acorde anterior (no se puede marcar un cambio hacia atrás de otro ya marcado). */
+export function retimeAt(segs: Segment[], j: number, t: number): Segment[] | null {
+  if (j < 0 || j >= segs.length) return null
+  let prev = j - 1
+  while (prev >= 0 && segs[prev].chord === 'N' && segs[prev].start >= t - MIN) prev--
+  if (prev >= 0 && t < segs[prev].start + MIN) return null
+  const d = t - segs[j].start
+  const out: Segment[] = []
+  for (let i = 0; i < segs.length; i++) {
+    const s = segs[i]
+    if (i < j) {
+      if (s.start >= t - MIN / 2) continue // silencios que quedaron después del cambio
+      out.push({ ...s, end: i === j - 1 || s.end > t ? round(t) : s.end })
+    } else out.push({ ...s, start: round(s.start + d), end: round(s.end + d) })
+  }
+  // el anterior que quedó termina justo en t (sin huecos)
+  const k = out.findIndex((s) => s.start === round(t) && s.chord === segs[j].chord)
+  if (k > 0) out[k - 1] = { ...out[k - 1], end: round(t) }
+  return out
+}

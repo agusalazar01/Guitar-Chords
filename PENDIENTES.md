@@ -103,3 +103,35 @@
 - Motor: Mi de paso en «Mi semilla», D7/Dm7 cortos en «Carta», Gmaj7/Cm7; detección automática del canto para la letra.
 - Firma fija de la APK (para actualizar sin desinstalar) + copia de seguridad de Mi cancionero.
 - Revisar el fallo de «motor-ia» en GitHub Actions (falta el detalle del paso con ✘).
+
+## 10. Prueba del usuario con v0.7.2 (HECHO en v0.8.0, falta probar en el teléfono)
+- El motor de IA para MP3/WAV propio NO se toca por ahora.
+- YouTube queda como está: los acordes del cifrado siguen avanzando solos con la letra.
+1. Búsqueda en el cancionero con texto limpio: «canción + artista principal + acordes». Sacar «(Feat. …)», «ft.», paréntesis,
+   corchetes, «En vivo», «Official…», lo que sigue a «|», años, y NO usar «site:… OR site:…» (Google no encontraba nada).
+   Caso real: título «Coti (Feat. Paulina Rubio & Julieta Venegas) Nada Fué Un Error»; el artista de LRCLIB trae el «(Feat. …)».
+   Con «nada de esto fue un error acordes» salían Cifra Club y LaCuerda primeros. Hacer pruebas con títulos reales.
+2. Acordes que se pierden al importar: el cifrado y la letra cortan las líneas distinto («Y tú, y tú» [E] + «No quisiste fallar»
+   en Cifra Club = una sola línea en LRCLIB) → la E se descarta (reproducido: 5 de 6 acordes). Unir palabra por palabra en vez de
+   línea por línea; estribillos escritos una vez se repiten donde se vuelven a cantar.
+3. Marcar los cambios a mano: Cifra Club sirve de referencia pero puede estar mal o a destiempo (el cifrado dice sobre qué palabra,
+   no el momento exacto). Si un acorde no cae bien, modo «Marcar cambios»: con la progresión que ya está cargada, mientras suena
+   tocás un botón grande en cada cambio («acá cambia») y la app corre ese acorde a ese momento. Poder rehacer desde un punto
+   hasta que quede bien; se guarda en Mi cancionero. (Opcional a evaluar: ajustar el toque al pulso más cercano.)
+- Además sigue pendiente: estética, modo «Siguiente»/compartir, segunda fuente de letras, firma fija de la APK + copia de
+  seguridad, y la versión web que falla en GitHub Actions (build y prueba «motor-ia»).
+4. Incluir también en la próxima versión: modo «Siguiente», compartir canciones (exportar/importar archivo), firma fija de la
+   APK (clave como secreto de GitHub, nunca en el repositorio) + copia de seguridad del cancionero.
+5. Estética: MANTENER los colores (tema oscuro actual) y la parte de acordes. Mejorar el diseño para que sea más amigable y
+   menos «de prueba» (ideas en conversación, a definir juntos).
+6. Logo de la app + pantalla de carga de ~1 s: logo grande, «Mi Cancionero», versión abajo en la esquina; poco más.
+7. Pantalla de carga: debajo de la versión, atribución chica: «Idea: Agustín Salazar · Hecha con Claude · Uruguay» (texto a ajustar).
+8. Mate: en la pantalla de carga junto al cuaderno, en «Mi cancionero» vacío y como animación mientras analiza (vapor del mate).
+   NO en el ícono (muy chico).
+9. Ícono de la app: cuadernito con un diagrama de acorde (o letras A, G) — formas simples que se lean a 48 px.
+
+## 11. Después de v0.8.0
+- Probar en el teléfono: ícono, pantalla de carga, marcar cambios, modo Siguiente, compartir (WhatsApp) y copia/importar.
+- La primera instalación con la firma fija necesita desinstalar una última vez (la clave anterior era de depuración).
+- Pendientes de antes: segunda fuente de letras, motor (Mi de paso, D7 cortos, Gmaj7/Cm7), detección del canto,
+  abrir un .cancionero directamente desde WhatsApp (hoy: guardarlo y usar «Importar»).

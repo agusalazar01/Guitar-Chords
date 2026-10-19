@@ -46,3 +46,20 @@ test('markChordAt: tocar en el mismo instante reemplaza; repetir el mismo acorde
   assert.deepEqual(markChordAt(a, 10.05, 'G', 50).map((s) => s.chord), ['C', 'G'])
   assert.equal(markChordAt(a, 20, 'F', 50), a)
 })
+
+test('Marcar cambios: el próximo acorde empieza donde toca el usuario y lo que sigue se corre igual', async () => {
+  const { nextChange, retimeAt } = await import('./segments.ts')
+  const s = [
+    { start: 0, end: 2, chord: 'N', confidence: null }, { start: 2, end: 6, chord: 'A', confidence: null },
+    { start: 6, end: 9, chord: 'E', confidence: null }, { start: 9, end: 12, chord: 'D', confidence: null },
+  ]
+  assert.equal(nextChange(s, 1), 1) // durante el silencio, el próximo es A
+  assert.equal(nextChange(s, 3), 2) // sonando A, el próximo es E
+  const r = retimeAt(s, 2, 6.8)! // E entra 0,8 s más tarde
+  assert.deepEqual(r.map((x) => [x.chord, x.start, x.end]), [['N', 0, 2], ['A', 2, 6.8], ['E', 6.8, 9.8], ['D', 9.8, 12.8]])
+  const q = retimeAt(s, 2, 5)! // más temprano
+  assert.deepEqual(q.map((x) => [x.chord, x.start, x.end]), [['N', 0, 2], ['A', 2, 5], ['E', 5, 8], ['D', 8, 11]])
+  assert.equal(retimeAt(s, 2, 1.5), null) // antes de que empiece A: no
+  const f = retimeAt(s, 1, 0.5)! // la A entra antes de terminar el silencio inicial
+  assert.deepEqual(f.map((x) => [x.chord, x.start]), [['N', 0], ['A', 0.5], ['E', 4.5], ['D', 7.5]])
+})

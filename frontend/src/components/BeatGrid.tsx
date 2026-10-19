@@ -18,7 +18,7 @@ export default function BeatGrid({ segments, beats, downbeat, bpb, time, hideNam
   return (
     <div className="flex items-stretch gap-1 overflow-hidden" role="img" aria-label={`Compás ${pos.bar}, tiempo ${pos.inBar + 1} de ${bpb} (estimado)`}>
       {cells.map((c, n) => (
-        <div key={c.i} className={`flex h-12 min-w-0 flex-1 items-center justify-center rounded-md text-sm font-bold ${(n % bpb === 0 && n > 0) ? 'ml-2' : ''} ${c.i === pos.index ? 'bg-fg text-bg' : 'bg-panel border border-line'}`}>
+        <div key={c.i} className={`flex h-12 min-w-0 flex-1 items-center justify-center rounded-lg text-sm font-bold transition-colors ${(n % bpb === 0 && n > 0) ? 'ml-2' : ''} ${c.i === pos.index ? 'bg-fg text-bg' : 'bg-panel'}`}>
           <span className="truncate px-0.5">{c.label}</span>
         </div>
       ))}

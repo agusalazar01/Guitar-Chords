@@ -47,6 +47,8 @@ const NOISE = /\b(official|oficial|video|videoclip|clip|audio|lyrics?|letra|hd|h
 export function cleanTitle(s: string): string {
   return s
     .replace(/\.(mp3|wav|m4a|ogg|flac)$/i, '')
+    .replace(/\s(feat\.?|ft\.?|featuring)\s.*$/i, ' ')
+    .replace(/\b(19|20)\d{2}\b/g, ' ')
     .replace(/[([{【].*?[)\]}】]/g, ' ')
     .replace(/_/g, ' ')
     .replace(NOISE, ' ')
@@ -120,7 +122,7 @@ export function addAnchor(anchors: LyricAnchor[] = [], l: number, t: number): Ly
 export function parseVideoTitle(raw: string): { artist: string | null; title: string; query: string } {
   const base = raw.replace(/^\s*mix\s*[-–—:]\s*/i, '').replace(/[([{【].*?[)\]}】]/g, ' ')
   const parts = base.split(/\s+[-–—|]\s+/).map((x) => cleanTitle(x)).filter(Boolean)
-  if (parts.length >= 2) return { artist: parts[0], title: parts[1], query: `${parts[0]} ${parts[1]}` }
+  if (parts.length >= 2) { const a = mainArtist(parts[0]) || parts[0]; return { artist: a, title: parts[1], query: `${a} ${parts[1]}` } }
   const t = cleanTitle(base)
   return { artist: null, title: t, query: t }
 }
@@ -150,4 +152,21 @@ export function pickConfident(results: LyricResult[], want: { artist: string | n
 export function pastedLyrics(text: string, trackName: string): SongLyrics {
   const synced = parseLrc(text)
   return { source: 'manual', trackName, artistName: '', synced: synced.length >= 3 ? synced : null, plain: synced.length >= 3 ? null : text.trim() }
+}
+
+/** Artista principal: sin «(Feat. …)», «ft.», ni los demás artistas («A & B», «A, B», «A x B», «A y B»). */
+export function mainArtist(a: string): string {
+  return a
+    .replace(/[([{【].*?[)\]}】]/g, ' ')
+    .replace(/\s(feat\.?|ft\.?|featuring|con)\s.*$/i, ' ')
+    .split(/\s*(?:&|,|\+|\/|\sx\s|\sy\s|\sand\s)\s*/i)[0]
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** Texto para buscar el cifrado: «canción artista principal», sin agregados (feat., en vivo, paréntesis, años…). */
+export function songbookText(track: string, artist: string | null): string {
+  const t = cleanTitle(track.replace(/[([{【].*?[)\]}】]/g, ' '))
+  const a = artist ? mainArtist(artist) : ''
+  return `${t} ${a}`.replace(/\s+/g, ' ').trim()
 }

@@ -18,14 +18,29 @@ jobs:
           npm install
           npm test
           npm run build
+      - name: Clave fija de la app (secreto de GitHub; si no está, se usa la de depuración)
+        env:
+          MC_KEYSTORE_B64: ${{ secrets.MC_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$MC_KEYSTORE_B64" ]; then
+            echo "$MC_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/mc.jks"
+            echo "MC_KEYSTORE=$RUNNER_TEMP/mc.jks" >> "$GITHUB_ENV"
+            echo "Firma: clave fija (las versiones nuevas se instalan encima sin perder canciones)"
+          else
+            echo "::warning::Sin clave fija (secreto MC_KEYSTORE_B64): la APK se firma con una clave de depuración nueva y hay que desinstalar la anterior."
+          fi
       - name: Generar proyecto Android
         working-directory: frontend
         run: |
           npx cap add android
           node scripts/android-patch.mjs
           npx cap sync android
-      - name: Compilar APK (firmada con la clave de depuración)
+      - name: Compilar APK
         working-directory: frontend/android
+        env:
+          MC_KEYSTORE_PASS: ${{ secrets.MC_KEYSTORE_PASS }}
+          MC_KEY_ALIAS: ${{ secrets.MC_KEY_ALIAS }}
+          MC_KEY_PASS: ${{ secrets.MC_KEYSTORE_PASS }}
         run: ./gradlew assembleDebug --no-daemon
       - name: Verificar el paquete APK
         run: |
@@ -39,7 +54,8 @@ jobs:
           grep -q "package: name='app.guitarchords'" /tmp/badging.txt
           grep -q "application-label:'Mi Cancionero'" /tmp/badging.txt || { echo "El nombre visible no es Mi Cancionero"; grep application-label /tmp/badging.txt; exit 1; }
           "$BT/aapt2" dump xmltree --file AndroidManifest.xml "$APK" | grep -q "android.intent.action.SEND" || { echo "Falta compartir (SEND) en el manifiesto"; exit 1; }
-          "$BT/apksigner" verify --verbose "$APK"
+          "$BT/apksigner" verify --verbose --print-certs "$APK" | grep -E "Verified|SHA-256|DN" || true
+          "$BT/apksigner" verify "$APK"
           ls -l "$APK"
       - name: Verificar que la APK lleva el mismo motor que la web (huellas SHA-256)
         run: |

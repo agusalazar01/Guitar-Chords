@@ -20,7 +20,7 @@ export default function LyricsView({ lyrics, time, offset, anchors, onAdjust, on
   const first = lines?.find((l) => l.text) ?? null
   const activeRef = useRef<HTMLLIElement>(null)
   useEffect(() => { if (full) activeRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }, [idx, full])
-  const small = 'min-h-9 rounded-lg border border-line px-2 text-xs'
+  const small = 'btn min-h-9 px-2 text-xs'
   const cur = lines && idx >= 0 ? lines[idx].text : ''
   const upcoming = lines ? lines.slice(idx + 1).filter((l) => l.text).slice(0, 2).map((l) => l.text) : []
   const nextLine = lines ? lines.slice(idx + 1).find((l) => l.text) : undefined
@@ -38,13 +38,13 @@ export default function LyricsView({ lyrics, time, offset, anchors, onAdjust, on
           </div>
         ) : (
           <div aria-live="off">
-            <p className="min-h-9 text-2xl font-bold leading-snug">{cur || <span className="text-mute">♪</span>}</p>
+            <p key={idx} className="anim-rise min-h-9 text-2xl font-bold leading-snug">{cur || <span className="text-mute">♪</span>}</p>
             {upcoming.map((t, i) => <p key={i} className={`leading-snug text-mute ${i === 0 ? 'text-lg' : 'text-base opacity-70'}`}>{t}</p>)}
           </div>
         )
       ) : <p className="text-sm text-mute">Esta letra no tiene tiempos: se muestra completa.</p>}
       {(full || !lines) && (
-        <ol className="mt-2 max-h-72 space-y-1 overflow-y-auto border-t border-line pt-2 text-sm">
+        <ol className="mt-2 max-h-72 space-y-1 overflow-y-auto rounded-xl bg-panel p-2 text-sm">
           {lines ? lines.map((l, i) => (
             <li key={i} ref={i === idx ? activeRef : undefined}>
               <button className={`w-full rounded px-1 text-left ${i === idx ? 'bg-accent/20 font-semibold' : ''}`} onClick={() => onSeek(audioTime(l.t, anchors, offset))}>{l.text || '♪'}</button>

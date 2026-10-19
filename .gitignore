@@ -5,3 +5,7 @@ __pycache__
 .env
 eval-audio
 frontend/public/ort
+
+# claves de firma: nunca al repositorio
+*.jks
+*.keystore

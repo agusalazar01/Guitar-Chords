@@ -32,16 +32,16 @@ export default function ChordStrip({ segments, activeIndex, time, hideNames, eas
         const d = ds.length ? ds[(alt[s.chord] ?? 0) % ds.length] : undefined
         const shown = hideNames ? '?' : s.chord === 'N' ? '—' : s.chord
         return (
-          <div key={i} data-current={current} className={`w-[160px] shrink-0 rounded-2xl border-2 p-2 text-center transition-all ${current ? 'border-accent bg-panel' : 'border-transparent'} ${past ? 'scale-90 opacity-40' : current ? '' : 'scale-90 opacity-70'}`}>
+          <div key={i} data-current={current} className={`w-[160px] shrink-0 rounded-2xl p-2 text-center transition-all duration-300 ${current ? 'bg-panel shadow-lg ring-2 ring-accent' : ''} ${past ? 'scale-90 opacity-40' : current ? '' : 'scale-90 opacity-70'}`}>
             <button onClick={() => onSelect(i)} aria-current={current ? 'true' : undefined} className="block w-full"
               aria-label={`${hideNames ? 'Acorde' : s.chord} ${i + 1}, desde ${formatTime(s.start)}`}>
               <div className="flex min-h-[150px] items-center justify-center">
                 {d ? <DiagramView d={d} /> : s.chord !== 'N' && <p className="px-2 text-xs text-mute">No hay una posición verificada para {s.chord}.</p>}
               </div>
-              <span className={`block text-3xl font-extrabold leading-tight ${current ? 'text-accent' : ''}`}>{shown}</span>
+              <span key={current ? `c${i}` : undefined} className={`block text-3xl font-extrabold leading-tight ${current ? 'anim-pop text-accent' : ''}`}>{shown}</span>
               <span className="text-[11px] text-mute">{formatTime(s.start)}{s.confidence !== null && s.confidence < 0.6 ? ' ≈' : ''}</span>
             </button>
-            {current && ds.length > 1 && <button className="mt-1 min-h-9 w-full rounded-lg border border-line text-xs" onClick={() => onAlt(s.chord)}>Otra posición ({((alt[s.chord] ?? 0) % ds.length) + 1}/{ds.length})</button>}
+            {current && ds.length > 1 && <button className="btn mt-1 min-h-9 w-full text-xs" onClick={() => onAlt(s.chord)}>Otra posición ({((alt[s.chord] ?? 0) % ds.length) + 1}/{ds.length})</button>}
           </div>
         )
       })}

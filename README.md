@@ -5,6 +5,26 @@ propio teléfono** y los muestra con la reproducción (archivo o video de YouTub
 edición. No hay servidor propio ni cuentas. (El identificador interno de la APK sigue siendo `app.guitarchords` para conservar las
 canciones ya guardadas; el repositorio mantiene su nombre.)
 
+## Cambios de la v0.8.0
+- **Diseño nuevo** (mismos colores oscuros): barra de arriba con íconos, pantalla de inicio («¿Qué tocamos hoy?», buscar,
+  escribir acordes, analizar MP3 y últimas canciones), botones Letra / Acordes / Opciones con ícono, nombre de la canción
+  arriba, menos bordes y transiciones suaves al cambiar de acorde y de línea.
+- **Logo y pantalla de carga**: ícono de cuaderno con diagrama de acorde; al abrir, un segundo con el cuaderno y el mate,
+  la versión y «Idea y diseño: Agustín Salazar · Hecha con Claude · Uruguay».
+- **El mate**: en Mi cancionero vacío y mientras analiza un MP3 (con vapor que sube).
+- **Marcar los cambios a mano**: si un acorde cae a destiempo, mientras suena tocás «Cambia a …» en cada cambio; lo que sigue
+  se corre con tu toque. Con «Deshacer» y se guarda en el cancionero.
+- **Modo Siguiente**: escribí la secuencia («Am F C G») o usá los acordes que ya tiene la canción y avanzá con un toque, sin
+  seguir el tiempo (canciones poco conocidas).
+- **Compartir canciones y copia de seguridad**: archivo «.cancionero» (Mi cancionero → ⋯ → Compartir; «Copia de seguridad»
+  guarda todo, con los audios; «Importar» abre una copia o una canción compartida).
+- **Búsqueda en cancioneros** con texto limpio: «canción + artista principal + acordes» (sin «feat.», paréntesis ni «site:»).
+- **Acordes del cifrado que ya no se pierden**: se unen palabra por palabra con la letra, aunque el cifrado y la letra corten
+  las líneas en lugares distintos.
+- **Firma fija de la APK (opcional)**: si el repositorio tiene los secretos `MC_KEYSTORE_B64`, `MC_KEYSTORE_PASS` y
+  `MC_KEY_ALIAS`, la APK se firma siempre con la misma clave y las versiones nuevas se instalan encima sin perder canciones.
+  La clave nunca está en el repositorio.
+
 ## Cambios de la v0.7.2
 - Tres botones siempre a mano debajo de la letra: **Letra**, **Acordes** y **⋯ Opciones**. Las opciones quedan en grupos
   plegables: «Para tocar» (transponer, cejilla, simplificados, saltos, bucle, velocidad, volumen), «Ajustar» (desfase, editar

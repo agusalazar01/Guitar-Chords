@@ -9,7 +9,7 @@ export default function Controls(p: {
   return (
     <div className="flex items-center gap-3">
       {p.children}
-      <button className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-accent text-accent-fg" onClick={p.playing ? p.onPause : p.onPlay} aria-label={p.playing ? 'Pausar' : 'Reproducir'}>
+      <button className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-accent text-accent-fg shadow-md transition active:scale-90" onClick={p.playing ? p.onPause : p.onPlay} aria-label={p.playing ? 'Pausar' : 'Reproducir'}>
         {p.playing ? <svg viewBox="0 0 24 24" className="h-6 w-6 fill-current"><path d="M6 5h4v14H6zM14 5h4v14h-4z" /></svg>
           : <svg viewBox="0 0 24 24" className="h-6 w-6 fill-current"><path d="M7 4v16l13-8z" /></svg>}</button>
       <div className="min-w-0 flex-1">
@@ -21,7 +21,7 @@ export default function Controls(p: {
   )
 }
 
-const sm = 'min-h-10 rounded-lg border border-line bg-bg text-xs font-semibold'
+const sm = 'min-h-10 rounded-xl bg-panel text-xs font-semibold active:scale-95'
 /** Controles de reproducción menos usados (dentro de «⋯ Opciones → Para tocar»): saltos, bucle, velocidad y volumen. */
 export function PlayExtras(p: {
   onSeek: (t: number) => void; onSkip: (d: number) => void; onVolume: (v: number) => void

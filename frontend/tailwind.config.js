@@ -5,7 +5,7 @@ export default {
       fontFamily: { sans: ['"Bricolage Grotesque"', 'system-ui', 'sans-serif'] },
       colors: {
         bg: 'var(--bg)', panel: 'var(--panel)', fg: 'var(--fg)', mute: 'var(--mute)',
-        line: 'var(--line)', accent: 'var(--accent)', 'accent-fg': 'var(--accent-fg)', next: 'var(--next)',
+        line: 'var(--line)', panel2: 'var(--panel2)', accent: 'var(--accent)', 'accent-fg': 'var(--accent-fg)', next: 'var(--next)',
       },
     },
   },

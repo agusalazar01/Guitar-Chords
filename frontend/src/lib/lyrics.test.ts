@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { activeLine, cleanTitle, matchScore, parseLrc, pickAuto, rankResults } from './lyrics.ts'
+import { mainArtist, songbookText, activeLine, cleanTitle, matchScore, parseLrc, pickAuto, rankResults } from './lyrics.ts'
 import type { LyricResult } from './lyrics.ts'
 
 test('parseLrc: tiempos, varias marcas por línea, etiquetas ignoradas y orden', () => {
@@ -68,4 +68,17 @@ test('pickConfident: título solo no alcanza; título + artista o título + dura
 test('pastedLyrics: con o sin tiempos', () => {
   assert.ok(pastedLyrics('[00:01.00] a\n[00:02.00] b\n[00:03.00] c', 'x').synced)
   assert.equal(pastedLyrics('una\nletra', 'x').plain, 'una\nletra')
+})
+
+test('texto limpio para buscar el cifrado (canción + artista principal)', () => {
+  assert.equal(songbookText('Nada Fué Un Error', 'Coti (Feat. Paulina Rubio & Julieta Venegas)'), 'Nada Fué Un Error Coti')
+  assert.equal(songbookText('Me Voy (En Vivo) [Official Video]', 'Julieta Venegas'), 'Me Voy Julieta Venegas')
+  assert.equal(songbookText('Carta Para No Llorar - Remastered 2015', 'Los Olimareños'), 'Carta Para No Llorar Los Olimareños')
+  assert.equal(songbookText('Tu Misterioso Alguien ft. Otro Artista', 'Miranda! & Alguien'), 'Tu Misterioso Alguien Miranda!')
+  assert.equal(mainArtist('Calamaro, Fito Páez'), 'Calamaro')
+  assert.equal(mainArtist('Coti x Julieta Venegas'), 'Coti')
+  const v = parseVideoTitle('Julieta Venegas ft. Coti - Nada Fue Un Error (Video Oficial) | HD')
+  assert.equal(songbookText(v.title, v.artist), 'Nada Fue Un Error Julieta Venegas')
+  const w = parseVideoTitle('Coti (Feat. Paulina Rubio & Julieta Venegas) Nada Fué Un Error')
+  assert.equal(songbookText(w.title, w.artist), 'Coti Nada Fué Un Error')
 })

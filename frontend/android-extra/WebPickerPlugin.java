@@ -1,8 +1,19 @@
 package app.guitarchords;
 
+import android.app.Activity;
 import android.app.Dialog;
+import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.util.Base64;
+import androidx.activity.result.ActivityResult;
+import androidx.core.content.FileProvider;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
+import java.util.HashMap;
+import java.util.Map;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.webkit.WebResourceRequest;
@@ -16,6 +27,7 @@ import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 /**
@@ -23,6 +35,9 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  *  - pickYouTube({query}): la búsqueda móvil de YouTube; cuando el usuario toca un video, devuelve {id} y se cierra.
  *  - importPage({url, title}): una página (p. ej. un cancionero) con el botón «Importar acordes»; al tocarlo devuelve el texto
  *    de la página que el usuario está viendo ({text, url, title}). Nada se lee sin que el usuario lo pida.
+ *  - createFile({name, mime}) / writeChunk({token, data}) / closeFile({token}): guardar un archivo donde el usuario elija
+ *    (copia de seguridad), escrito por partes para no pasar todo de una vez.
+ *  - shareFile({name, mime, data}): compartir un archivo chico (una canción) con otras apps (WhatsApp, mail…).
  * No se usan cuentas ni claves. Los enlaces que intentan abrir otras apps (intent://) se bloquean.
  */
 @CapacitorPlugin(name = "WebPicker")
@@ -77,19 +92,18 @@ public class WebPickerPlugin extends Plugin {
       bar.setGravity(Gravity.CENTER_VERTICAL);
       bar.setBackgroundColor(Color.rgb(14, 20, 36));
       bar.setPadding(12, 12, 12, 12);
-      Button close = new Button(getActivity());
-      close.setText("Cerrar");
+      Button close = styled("Cerrar", false);
       TextView label = new TextView(getActivity());
       label.setText(title);
-      label.setTextColor(Color.WHITE);
+      label.setTextColor(Color.rgb(147, 160, 196));
+      label.setTextSize(13f);
       label.setPadding(16, 0, 16, 0);
       bar.addView(close);
       bar.addView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
       final WebView view = new WebView(getActivity());
       web = view;
       if (!youtube) {
-        Button imp = new Button(getActivity());
-        imp.setText(importLabel);
+        Button imp = styled(importLabel, true);
         bar.addView(imp);
         imp.setOnClickListener(x -> view.evaluateJavascript(
           "(function(){var ps=[].slice.call(document.querySelectorAll('pre'));ps.sort(function(a,b){return b.innerText.length-a.innerText.length});"
@@ -144,5 +158,100 @@ public class WebPickerPlugin extends Plugin {
     r.put("id", id);
     finishWith(r);
     return true;
+  }
+
+  // ---------- archivos: copia de seguridad y compartir ----------
+  private final Map<String, OutputStream> streams = new HashMap<>();
+  private int nextToken = 1;
+
+  @PluginMethod
+  public void createFile(PluginCall call) {
+    Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+    i.addCategory(Intent.CATEGORY_OPENABLE);
+    i.setType(call.getString("mime", "application/octet-stream"));
+    i.putExtra(Intent.EXTRA_TITLE, call.getString("name", "mi-cancionero.cancionero"));
+    startActivityForResult(call, i, "createFileResult");
+  }
+
+  @ActivityCallback
+  private void createFileResult(PluginCall call, ActivityResult result) {
+    if (call == null) return;
+    Intent data = result.getData();
+    if (result.getResultCode() != Activity.RESULT_OK || data == null || data.getData() == null) {
+      JSObject r = new JSObject();
+      r.put("cancelled", true);
+      call.resolve(r);
+      return;
+    }
+    try {
+      OutputStream out = getContext().getContentResolver().openOutputStream(data.getData(), "w");
+      if (out == null) { call.reject("No se pudo abrir el archivo para escribir."); return; }
+      String token = "f" + (nextToken++);
+      streams.put(token, out);
+      JSObject r = new JSObject();
+      r.put("token", token);
+      call.resolve(r);
+    } catch (Exception e) {
+      call.reject("No se pudo crear el archivo: " + e.getMessage());
+    }
+  }
+
+  @PluginMethod
+  public void writeChunk(PluginCall call) {
+    OutputStream out = streams.get(call.getString("token", ""));
+    if (out == null) { call.reject("El archivo no está abierto."); return; }
+    try {
+      out.write(Base64.decode(call.getString("data", ""), Base64.DEFAULT));
+      call.resolve();
+    } catch (Exception e) {
+      call.reject("No se pudo escribir el archivo: " + e.getMessage());
+    }
+  }
+
+  @PluginMethod
+  public void closeFile(PluginCall call) {
+    OutputStream out = streams.remove(call.getString("token", ""));
+    try {
+      if (out != null) { out.flush(); out.close(); }
+      call.resolve();
+    } catch (Exception e) {
+      call.reject("No se pudo terminar de guardar el archivo: " + e.getMessage());
+    }
+  }
+
+  @PluginMethod
+  public void shareFile(PluginCall call) {
+    String name = call.getString("name", "cancion.cancionero").replaceAll("[^A-Za-z0-9._ -]", "_");
+    try {
+      File dir = new File(getContext().getCacheDir(), "share");
+      if (!dir.exists() && !dir.mkdirs()) { call.reject("No se pudo preparar el archivo."); return; }
+      File f = new File(dir, name);
+      try (FileOutputStream out = new FileOutputStream(f)) { out.write(Base64.decode(call.getString("data", ""), Base64.DEFAULT)); }
+      Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".mcfiles", f);
+      Intent send = new Intent(Intent.ACTION_SEND);
+      send.setType(call.getString("mime", "application/octet-stream"));
+      send.putExtra(Intent.EXTRA_STREAM, uri);
+      send.putExtra(Intent.EXTRA_TEXT, call.getString("text", ""));
+      send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+      getActivity().startActivity(Intent.createChooser(send, "Compartir canción"));
+      call.resolve();
+    } catch (Exception e) {
+      call.reject("No se pudo compartir: " + e.getMessage());
+    }
+  }
+
+  /** Botón con los colores de la app (amarillo sobre oscuro, o borde claro). */
+  private Button styled(String text, boolean primary) {
+    Button b = new Button(getActivity());
+    b.setText(text);
+    b.setAllCaps(false);
+    b.setTextColor(primary ? Color.rgb(26, 18, 4) : Color.rgb(233, 238, 252));
+    GradientDrawable g = new GradientDrawable();
+    g.setCornerRadius(28f);
+    if (primary) g.setColor(Color.rgb(242, 184, 75));
+    else { g.setColor(Color.rgb(23, 32, 56)); g.setStroke(2, Color.rgb(42, 54, 88)); }
+    b.setBackground(g);
+    b.setPadding(32, 8, 32, 8);
+    return b;
   }
 }

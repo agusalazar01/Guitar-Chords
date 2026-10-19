@@ -7,6 +7,7 @@ import { Capacitor } from '@capacitor/core'
 import { searchLyrics } from '../lib/lrclib.ts'
 import { rankResults } from '../lib/lyrics.ts'
 import type { LyricResult } from '../lib/lyrics.ts'
+import { Mate } from './Art.tsx'
 
 const isNative = () => { try { return Capacitor.isNativePlatform() } catch { return false } }
 const fmtDur = (d: number | null) => (d ? `${Math.floor(d / 60)}:${String(Math.round(d % 60)).padStart(2, '0')}` : '')
@@ -59,8 +60,8 @@ export function SearchPanel({ onPick, onLyrics, onVideoSearch, recent, apiKey, l
     <div className="w-full">
       <form onSubmit={submit} className="flex gap-2">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Canción, artista o enlace de YouTube"
-          aria-label="Buscar canción" className="flex-1 min-h-11 rounded-lg border border-line bg-panel px-3" />
-        <button className="min-h-11 px-4 rounded-lg bg-accent text-accent-fg font-semibold" disabled={busy}>{busy ? 'Buscando…' : 'Buscar'}</button>
+          aria-label="Buscar canción" className="field min-w-0 flex-1" />
+        <button className="btn-primary" disabled={busy}>{busy ? 'Buscando…' : 'Buscar'}</button>
       </form>
       {onVideoSearch && isNative() && !apiKey && (
         <p className="mt-1 text-xs text-mute">Buscar abre YouTube acá adentro: tocá el video y la app trae la letra y te ofrece los acordes.{' '}
@@ -74,7 +75,7 @@ export function SearchPanel({ onPick, onLyrics, onVideoSearch, recent, apiKey, l
           <ul className="mt-1 space-y-1">
             {songs.map((r) => (
               <li key={r.id}>
-                <button className="w-full rounded-lg border border-line bg-panel p-2 text-left" onClick={() => { onLyrics(r); setSongs(null); setQ(`${r.artistName} ${r.trackName}`); setAsked(`${r.artistName} ${r.trackName}`); void videos(`${r.artistName} ${r.trackName}`) }}>
+                <button className="w-full rounded-xl bg-panel p-2 text-left" onClick={() => { onLyrics(r); setSongs(null); setQ(`${r.artistName} ${r.trackName}`); setAsked(`${r.artistName} ${r.trackName}`); void videos(`${r.artistName} ${r.trackName}`) }}>
                   <span className="block text-sm font-semibold">{r.trackName}</span>
                   <span className="block text-xs text-mute">{r.artistName}{r.albumName ? ` · ${r.albumName}` : ''}{r.duration ? ` · ${fmtDur(r.duration)}` : ''} · {r.syncedLyrics ? 'letra con tiempos' : 'letra sin tiempos'}</span>
                 </button>
@@ -90,7 +91,7 @@ export function SearchPanel({ onPick, onLyrics, onVideoSearch, recent, apiKey, l
           {results && results.length > 0 ? (
             <ul className="mt-1 grid gap-2 sm:grid-cols-2">
               {results.map((v) => (
-                <li key={v.id} className="flex gap-3 rounded-lg border border-line bg-panel p-2">
+                <li key={v.id} className="flex gap-3 rounded-xl bg-panel p-2">
                   <img src={v.thumbnail} alt="" className="w-28 h-16 object-cover rounded" />
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-sm line-clamp-2">{v.title}</p>
@@ -102,7 +103,7 @@ export function SearchPanel({ onPick, onLyrics, onVideoSearch, recent, apiKey, l
             </ul>
           ) : (
             <div className="mt-1 space-y-1 text-sm">
-              <a href={ytUrl(asked)} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center rounded-lg border border-line px-3 font-semibold">Buscar «{asked}» en YouTube ↗</a>
+              <a href={ytUrl(asked)} target="_blank" rel="noreferrer" className="btn font-semibold">Buscar «{asked}» en YouTube ↗</a>
               <p className="text-xs text-mute">{isNative()
                 ? 'Se abre YouTube. En el video que quieras, tocá Compartir → Mi Cancionero y vuelve acá solo.'
                 : 'Se abre YouTube en otra pestaña: copiá el enlace del video y pegalo en el buscador.'}{!apiKey && ' Con tu clave de YouTube (Ajustes) los videos aparecen directamente acá.'}</p>
@@ -120,17 +121,28 @@ export function SearchPanel({ onPick, onLyrics, onVideoSearch, recent, apiKey, l
 
 export interface Job { filename: string; stage: 'decoding' | 'analyzing'; progress: number }
 
-export function AudioPanel({ job, error, onFile, onCancel }: { job: Job | null; error: string | null; onFile: (f: File) => void; onCancel: () => void }) {
+export function AudioPanel({ job, error, onFile, onCancel, compact = false }: { job: Job | null; error: string | null; onFile: (f: File) => void; onCancel: () => void; compact?: boolean }) {
   return (
     <div className="space-y-2 text-sm">
-      <p>Elegí un MP3 o WAV de tu teléfono (máx. 40 MB, hasta 15 min). Se analiza y se guarda <b>solo en este dispositivo</b>: no se sube a ningún servidor.</p>
-      <input type="file" accept=".mp3,.wav,audio/mpeg,audio/wav,audio/x-wav" disabled={!!job} aria-label="Archivo de audio"
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = '' }} />
+      {!job && <>
+        {!compact && <p className="text-mute">MP3 o WAV de tu teléfono (máx. 40 MB, hasta 15 min). Se analiza y se guarda <b className="text-fg">solo en este dispositivo</b>.</p>}
+        <label className="btn-primary w-full cursor-pointer">
+          Elegir un MP3 o WAV
+          <input type="file" accept=".mp3,.wav,audio/mpeg,audio/wav,audio/x-wav" className="sr-only" aria-label="Archivo de audio"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = '' }} />
+        </label>
+      </>}
       {job && (
-        <div role="status">
-          <progress value={job.stage === 'analyzing' ? job.progress : undefined} max={1} className="w-full" aria-label="Progreso del análisis" />
-          <p className="text-mute">{job.stage === 'decoding' ? 'Decodificando el audio…' : `Analizando acordes… ${Math.round(job.progress * 100)}%`}</p>
-          {job.stage === 'analyzing' && <button className="min-h-10 px-3 rounded-lg border border-line" onClick={onCancel}>Cancelar análisis</button>}
+        <div role="status" className="flex items-center gap-3">
+          <Mate size={46} className="shrink-0 text-mute" />
+          <div className="min-w-0 flex-1 space-y-1">
+            <p className="font-semibold">{job.stage === 'decoding' ? 'Preparando el audio…' : `Cebando los acordes… ${Math.round(job.progress * 100)}%`}</p>
+            <div className="h-2 overflow-hidden rounded-full bg-panel2" aria-label="Progreso del análisis">
+              <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${job.stage === 'analyzing' ? Math.round(job.progress * 100) : 5}%` }} />
+            </div>
+            <p className="truncate text-xs text-mute">{job.filename}</p>
+            {job.stage === 'analyzing' && <button className="btn" onClick={onCancel}>Cancelar análisis</button>}
+          </div>
         </div>
       )}
       {error && <p role="alert" className="text-red-500">{error}</p>}
@@ -169,12 +181,12 @@ export function MarkPanel({ time, used, onMark, onUndo, canUndo, keyName, onKey 
 }) {
   const [other, setOther] = useState('')
   const palette = [...new Set([...keyChords(keyName), ...used.filter((c) => c !== 'N')])]
-  const btn = 'min-h-12 rounded-lg border border-line bg-bg px-2 text-base font-bold'
+  const btn = 'min-h-12 rounded-xl bg-panel2 px-2 text-base font-bold active:scale-95'
   return (
     <div className="space-y-2 text-sm">
       <p className="text-mute">Reproducí el video y tocá cada acorde <b>justo cuando empieza</b> ({time.toFixed(1)} s). Podés pausar, retroceder y volver a tocar para corregir. Se guarda en este teléfono junto al video; no se analiza ni se descarga el audio de YouTube.</p>
       <label className="flex items-center gap-2">Tonalidad
-        <select value={keyName} onChange={(e) => onKey(e.target.value)} className="min-h-10 rounded-lg border border-line bg-panel px-2">
+        <select value={keyName} onChange={(e) => onKey(e.target.value)} className="field min-h-10 px-2">
           {NN.flatMap((k) => [k, `${k}m`]).map((k) => <option key={k} value={k}>{k.endsWith('m') ? `${k.slice(0, -1)} menor` : `${k} mayor`}</option>)}
         </select></label>
       <div className="grid grid-cols-4 gap-2">
@@ -182,10 +194,10 @@ export function MarkPanel({ time, used, onMark, onUndo, canUndo, keyName, onKey 
         <button className={btn} onClick={() => onMark('N')} title="Sin acorde">N</button>
       </div>
       <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (other.trim()) { onMark(other.trim()); setOther('') } }}>
-        <input value={other} onChange={(e) => setOther(e.target.value)} placeholder="Otro acorde (ej. Bm7, F#, Dsus4)" className="min-h-10 flex-1 rounded-lg border border-line bg-panel px-3" />
-        <button className="min-h-10 rounded-lg border border-line px-3">Marcar</button>
+        <input value={other} onChange={(e) => setOther(e.target.value)} placeholder="Otro acorde (ej. Bm7, F#, Dsus4)" className="field min-h-10 min-w-0 flex-1" />
+        <button className="btn">Marcar</button>
       </form>
-      <button className="min-h-10 rounded-lg border border-line px-3" onClick={onUndo} disabled={!canUndo}>Deshacer última marca</button>
+      <button className="btn" onClick={onUndo} disabled={!canUndo}>Deshacer última marca</button>
     </div>
   )
 }

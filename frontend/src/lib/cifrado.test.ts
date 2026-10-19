@@ -56,3 +56,37 @@ test('alignCifrado: ubica acordes con la letra, intro antes del canto y estribil
   const am = seg.find((s) => s.chord === 'Am' && s.start > 12)!
   assert.ok(Math.abs(am.start - 15) < 0.05)
 })
+
+test('alignCifrado: líneas cortadas distinto en el cifrado y en la letra no pierden acordes (Coti, «Nada fue un error»)', () => {
+  const cif = `   A
+Los errores no se eligen
+   E/G#
+Para bien o para mal
+   D/F#
+No fallé cuando viniste
+       E
+Y tú, y tú
+
+No quisiste fallar
+
+    A
+Aprendí la diferencia
+     E/G#
+Entre juego y el azar
+
+[Estribillo]
+E                    A
+Nada de esto fue un error
+  E
+Uh-Oh-Oh
+ D
+Nada fue un error`
+  const lrc = [['Los errores no se eligen', 56], ['Para bien o para mal', 60], ['No fallé cuando viniste', 63], ['Y tú, y tú no quisiste fallar', 66],
+    ['Aprendí la diferencia', 70], ['Entre el juego y el azar', 73], ['Nada de esto fue un error, uoh-oh', 77], ['Nada fue un error', 81]].map(([text, t]) => ({ text: text as string, t: t as number }))
+  const ev = alignCifrado(parseCifrado(cif), lrc)
+  assert.deepEqual(ev.map((e) => e.chord), ['A', 'E/G#', 'D/F#', 'E', 'A', 'E/G#', 'E', 'A', 'E', 'D'])
+  const e = ev.find((x) => x.chord === 'E')!
+  assert.ok(e.l >= 66 && e.l < 68, `E en ${e.l}`) // «Y tú, y tú» al comienzo de la línea unida
+  const uh = ev.filter((x) => x.chord === 'E')[2]
+  assert.ok(uh.l > 78 && uh.l < 81, `E de «uoh-oh» en ${uh.l}`)
+})

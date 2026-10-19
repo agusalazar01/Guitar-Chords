@@ -14,8 +14,8 @@ for (const [name, type] of [['Chromium (Chrome / WebView de Android)', chromium]
     const r = await page.waitForFunction(() => window.__selftest, null, { timeout: 180000 }).then((h) => h.jsonValue())
     console.log(`\n${name}: ${r.ok ? 'FUNCIONA' : 'FALLÓ'}${r.error ? ` (${r.error})` : ''}`)
     console.log(`  notas detectadas: ${(r.foundPitchClasses ?? []).join(' ')} · carga ${Math.round(r.loadMs ?? 0)} ms · ${Math.round(r.msPerWindow ?? 0)} ms/ventana · ${(r.secPerAudioMinute ?? 0).toFixed(1)} s por minuto de audio (servidor de CI, no un teléfono)`)
-    if (!r.ok) failed++
-  } catch (e) { console.log(`\n${name}: ERROR ${e.message}`); failed++ }
+    if (!r.ok) { failed++; console.log(`::error title=Motor de IA (${name})::${r.error ?? 'no detectó Do-Mi-Sol'}`) }
+  } catch (e) { console.log(`\n${name}: ERROR ${e.message}`); console.log(`::error title=Motor de IA (${name})::${e.message.split('\n')[0]}`); failed++ }
   if (errors.length) console.log('  errores de consola:', errors.slice(0, 5).join(' | '))
   await browser.close()
 }
@@ -25,7 +25,8 @@ for (const [name, type] of [['Chromium (Chrome / WebView de Android)', chromium]
 {
   const browser = await chromium.launch(), page = await browser.newPage(), errors = []
   page.on('pageerror', (e) => errors.push(String(e)))
-  const step = async (label, fn) => { try { await fn(); console.log(`  ✔ ${label}`) } catch (e) { console.log(`  ✘ ${label}: ${e.message.split('\n')[0]}`); failed++ } }
+  // ::error:: hace que el fallo aparezca como anotación en GitHub (se ve sin abrir el registro completo)
+  const step = async (label, fn) => { try { await fn(); console.log(`  ✔ ${label}`) } catch (e) { const m = e.message.split('\n')[0]; console.log(`  ✘ ${label}: ${m}`); console.log(`::error title=Prueba de interfaz::${label}: ${m}`); failed++ } }
   console.log('\nInterfaz (Chromium):')
   const base = url.replace(/[?#].*$/, '')
   await step('carga la app', () => page.goto(base))
@@ -38,10 +39,10 @@ for (const [name, type] of [['Chromium (Chrome / WebView de Android)', chromium]
     await page.getByLabel('Secuencia de acordes').waitFor({ timeout: 10000 })
     await page.getByRole('button', { name: 'Abrir Mi cancionero' }).click()
     await page.getByRole('dialog', { name: 'Mi cancionero' }).getByText('acordes marcados').first().waitFor({ timeout: 10000 })
-    await page.getByRole('button', { name: 'Cerrar' }).click()
+    await page.getByRole('dialog', { name: 'Mi cancionero' }).getByRole('button', { name: 'Cerrar' }).click()
   })
-  await step('«+ Nueva» vuelve al inicio sin recargar y limpia el buscador', async () => {
-    await page.getByRole('button', { name: '+ Nueva', exact: true }).click()
+  await step('«Nueva canción» vuelve al inicio sin recargar y limpia el buscador', async () => {
+    await page.getByRole('button', { name: 'Nueva canción', exact: true }).click()
     await page.getByText('Buscá una canción o elegí un MP3/WAV para empezar.').waitFor({ timeout: 10000 })
     if (await search.inputValue()) throw new Error('el buscador conserva el texto anterior')
   })
@@ -61,9 +62,31 @@ for (const [name, type] of [['Chromium (Chrome / WebView de Android)', chromium]
     await page.getByRole('button', { name: 'Usar estos acordes' }).click()
     await page.getByLabel(/^Am \d+,/).first().waitFor({ timeout: 10000 })
   })
+  await step('«Marcar los cambios a mano» muestra el botón grande para marcar', async () => {
+    await page.getByRole('button', { name: 'Acordes', exact: true }).click()
+    await page.getByRole('button', { name: 'Marcar los cambios a mano' }).first().click({ timeout: 10000 })
+    await page.getByRole('button', { name: /^.?\s*Cambia a / }).waitFor({ timeout: 5000 })
+    await page.getByRole('button', { name: 'Listo', exact: true }).click()
+  })
+  await step('escribir una secuencia y avanzar con «Siguiente»', async () => {
+    await page.getByRole('button', { name: 'Nueva canción', exact: true }).click()
+    await page.getByRole('button', { name: /Escribir acordes/ }).first().click()
+    await page.getByLabel('Nombre de la canción').fill('Prueba Siguiente')
+    await page.getByLabel('Secuencia de acordes escrita').fill('Am F C G')
+    await page.getByRole('button', { name: 'Usar en modo Siguiente' }).click()
+    await page.getByText('Acorde 1 de 4').waitFor({ timeout: 5000 })
+    await page.getByRole('button', { name: /^Siguiente: F/ }).click()
+    await page.getByText('Acorde 2 de 4').waitFor({ timeout: 5000 })
+  })
+  await step('Mi cancionero tiene copia de seguridad e importar', async () => {
+    await page.getByRole('button', { name: 'Abrir Mi cancionero' }).click()
+    await page.getByRole('button', { name: /Copia de seguridad/ }).waitFor({ timeout: 5000 })
+    await page.getByLabel('Importar canción o copia').waitFor({ state: 'attached', timeout: 5000 })
+    await page.getByRole('dialog', { name: 'Mi cancionero' }).getByRole('button', { name: 'Cerrar' }).click()
+  })
   // Letras (LRCLIB) desde el navegador: si falla, la web no puede consultar LRCLIB (CORS); la APK usa la capa nativa y no depende de esto.
   try {
-    await page.getByRole('button', { name: '+ Nueva', exact: true }).click()
+    await page.getByRole('button', { name: 'Nueva canción', exact: true }).click()
     await search.fill('guitarrero viejo zitarrosa'); await search.press('Enter')
     await page.getByText('letra con tiempos').first().waitFor({ timeout: 20000 })
     await page.getByText('letra con tiempos').first().click()

@@ -35,6 +35,9 @@ export function bpUnwrap(outs: Float32Array[], nFrames: number): Float32Array[] 
 export interface NoteFeatures { treble: Float64Array[]; bass: Float64Array[]; centers: number[]; hopSec: number; notes?: Float64Array[]; mid?: Float64Array[] }
 
 /** Promedia `group` cuadros y pliega en 12 clases de altura: agudos (≥ splitMidi) y graves (< splitMidi, la nota más grave pesa más). */
+/** Piso de ruido de Basic Pitch: en grabaciones en vivo o con ruido las 88 probabilidades quedan en 0,05–0,15 y aplanan el croma;
+ *  se resta este piso a cada probabilidad antes de sumar (solo cuentan las notas que el modelo realmente oye). */
+export const NOTECFG = { floor: 0.1, floorBass: 0.1 }
 export function noteChroma(rows: Float32Array[], group = 8, splitMidi = 48, power = 1, minMidi = 21, maxMidi = 108): NoteFeatures {
   const treble: Float64Array[] = [], bass: Float64Array[] = [], centers: number[] = []
   for (let s = 0; s + 1 <= rows.length; s += group) {
@@ -45,7 +48,9 @@ export function noteChroma(rows: Float32Array[], group = 8, splitMidi = 48, powe
       for (let k = 0; k < BP.keys; k++) {
         const midi = BP.firstMidi + k
         if (midi < minMidi || midi > maxMidi) continue
-        const p = r[k] ** power, pc = midi % 12
+        const v = r[k] - (midi >= splitMidi ? NOTECFG.floor : NOTECFG.floorBass)
+        if (v <= 0) continue
+        const p = v ** power, pc = midi % 12
         if (midi >= splitMidi) t[pc] += p
         else { b[pc] += p * (lowestSeen ? 0.5 : 1); if (r[k] > 0.3) lowestSeen = true; t[pc] += 0.5 * p }
       }

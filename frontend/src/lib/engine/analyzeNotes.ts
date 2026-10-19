@@ -8,48 +8,47 @@ import type { NoteFeatures } from './notes.ts'
 
 /** Elegidos con 6 canciones (README). bassTones: una inversión (bajo en 3ª/5ª) también apoya al acorde; conc*: el bajo solo pesa cuando una nota grave domina. */
 export const NPARAMS = {
-  fuseWeight: 1, rarePenalty: 0.5, keyBonus: 0.75, offStay: 0.97, onStay: 0.9, timeShift: -0.05, extPenalty: 0.8, bassWeight: 0.5, beta: 12,
+  fuseWeight: 1, rarePenalty: 0.5, keyBonus: 0.75, offStay: 0.99, onStay: 0.93, timeShift: -0.05, extPenalty: 0.8, bassWeight: 0.3, beta: 12,
   bassTones: 0.9, concLo: 0.15, concHi: 0.35, inversionShare: 0.55, inversionMinSec: 0.6, minBassEnergy: 0.15,
 }
-export const NMETHOD = 'híbrido IA (Basic Pitch) + croma + HMM v0.5.3 (en el dispositivo)'
+export const NMETHOD = 'híbrido IA (Basic Pitch) + croma + HMM v0.6.1 (en el dispositivo)'
 
 /** Séptimas por segmento: con la raíz y los límites del modo simple (los más fiables), un tramo es 7, m7 o maj7 solo si la 7ª
  *  está presente de forma SOSTENIDA (en al menos `persist` de sus cuadros supera `frameRatio` × la media de la tríada).
  *  Una nota de paso de la melodía no alcanza; una séptima tocada por la guitarra o el piano, sí. */
-export const SEVENTH = { frameRatio: 0.6, persist: 0.75, minDur: 0.5, strictPersist: 0.9, richShare: 0.15 }
-export function addSevenths(segs: Segment[], frames: Float64Array[], centers: number[], persist = SEVENTH.persist): Segment[] {
+/** Séptimas del modo Avanzados (v0.6): por segmento, con el promedio de las notas medias (C3–E5) de Basic Pitch sin su piso de ruido.
+ *  Medido contra Chordify: la séptima menor promedia ≥ 0,5 de la tríada en el 85 % de los acordes «7» de «Carta para no llorar» y
+ *  en menos del 10 % de los acordes sin séptima de «A las nueve». Umbral 0,7 por defecto y 0,5 si la canción usa muchas séptimas;
+ *  la séptima mayor (maj7) se marca desde 0,3. */
+export const SEVENTH = { b7: 0.7, b7Rich: 0.5, richShare: 0.28, maj7: 0.3, minDur: 0.5 }
+export function addSevenths(segs: Segment[], frames: Float64Array[], centers: number[], b7min = SEVENTH.b7): Segment[] {
   return segs.map((s) => {
     const m = /^([A-G]#?)(m?)(\/[A-G]#?)?$/.exec(s.chord)
     if (!m || s.end - s.start < SEVENTH.minDur) return s
     const r = NOTES.indexOf(m[1]), minor = m[2] === 'm', third = (r + (minor ? 3 : 4)) % 12
-    let n = 0, hb7 = 0, hM7 = 0, sb7 = 0, sM7 = 0
+    const sum = new Float64Array(12)
+    let n = 0
     for (let t = 0; t < centers.length; t++) {
-      if (centers[t] < s.start || centers[t] >= s.end) continue
-      const v = frames[t], tri = (v[r] + v[third] + v[(r + 7) % 12]) / 3
-      if (tri <= 0) continue
-      const b7 = v[(r + 10) % 12] / tri, M7 = v[(r + 11) % 12] / tri
-      n++; sb7 += b7; sM7 += M7
-      if (b7 >= SEVENTH.frameRatio) hb7++
-      if (M7 >= SEVENTH.frameRatio) hM7++
+      if (centers[t] < s.start + 0.1 || centers[t] >= s.end) continue
+      const v = frames[t]; for (let c = 0; c < 12; c++) sum[c] += v[c]; n++
     }
-    if (!n) return s
-    const bass = m[3] ?? ''
-    if (hb7 / n >= persist && sb7 > sM7) return { ...s, chord: `${m[1]}${minor ? 'm7' : '7'}${bass}` }
-    if (!minor && hM7 / n >= persist && sM7 > sb7) return { ...s, chord: `${m[1]}maj7${bass}` }
+    const tri = (sum[r] + sum[third] + sum[(r + 7) % 12]) / 3
+    if (!n || tri <= 0) return s
+    const b7 = sum[(r + 10) % 12] / tri, M7 = sum[(r + 11) % 12] / tri, bass = m[3] ?? ''
+    if (b7 >= b7min && b7 > M7) return { ...s, chord: `${m[1]}${minor ? 'm7' : '7'}${bass}` }
+    if (!minor && M7 >= SEVENTH.maj7 && M7 > b7) return { ...s, chord: `${m[1]}maj7${bass}` }
     return s
   })
 }
 
-/** Modo Avanzados adaptativo: primero, criterio estricto con las notas medias (C3–E5). Si ≥ 15 % del tiempo ya son séptimas,
- *  la canción «usa séptimas» (jazz, bossa…) y se aplica un criterio más sensible con todas las notas; si no, se queda el estricto.
- *  Además se conservan sus2/sus4/dim/aug del decodificador cuando coinciden en raíz con el modo simple. */
+/** Modo Avanzados: los acordes del modo simple + séptimas detectadas por segmento; se conservan sus2/sus4/dim/aug del
+ *  decodificador cuando coinciden en raíz con el modo simple. */
 export function adaptiveAdvanced(simple: Segment[], hmmAdvanced: Segment[], f: NoteFeatures): Segment[] {
-  const mid = f.mid ?? f.treble, all = f.notes ?? f.treble
-  const strict = addSevenths(simple, mid, f.centers, SEVENTH.strictPersist)
+  const mid = f.mid ?? f.treble, strict = addSevenths(simple, mid, f.centers)
   let tot = 0, sev = 0
-  for (const x of strict) if (x.chord !== 'N') { tot += x.end - x.start; if (/7/.test(x.chord)) sev += x.end - x.start }
-  const rich = tot > 0 && sev / tot >= SEVENTH.richShare
-  const base = rich ? addSevenths(simple, all, f.centers, SEVENTH.persist) : strict
+  for (const x of strict) if (x.chord !== 'N') { tot += x.end - x.start; if (/7/.test(x.chord) && !/maj7/.test(x.chord)) sev += x.end - x.start }
+  // canción «de séptimas» (≥ 28 % del tiempo ya con séptima clara): umbral más sensible; si no, se queda el estricto
+  const base = tot > 0 && sev / tot >= SEVENTH.richShare ? addSevenths(simple, mid, f.centers, SEVENTH.b7Rich) : strict
   return base.map((s) => {
     const root = /^[A-G]#?/.exec(s.chord)?.[0]
     if (!root) return s

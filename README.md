@@ -5,6 +5,35 @@ propio teléfono** y los muestra con la reproducción (archivo o video de YouTub
 edición. No hay servidor propio ni cuentas. (El identificador interno de la APK sigue siendo `app.guitarchords` para conservar las
 canciones ya guardadas; el repositorio mantiene su nombre.)
 
+## Motor v0.6.1 (medido)
+Referencia nueva: la grabación completa de Chordify de «Carta para no llorar» que mandó el usuario (109 acordes en 175 s, alineada con
+el MP3 por el audio; Chordify pone los cambios sobre una grilla de 1–2 s). Qué se encontró y qué se cambió:
+- **Piso de ruido de la IA**: Basic Pitch da ~0,10 de probabilidad a *todas* las notas todo el tiempo (medido en las 8 canciones).
+  Sumado, ese piso tapaba las notas reales en pasajes suaves: por eso la intro de guitarra eléctrica de «Mi semilla» quedaba en Mi
+  16 s seguidos. Ahora se resta (`NOTECFG`): la intro muestra la caminata del bajo Mi–Fa#–Sol#–La (E F#m G#m A).
+- **Las séptimas sí están en el audio**: en «Carta», la séptima suele ser la nota *más* fuerte del acorde (en E7 el Re, en Am7 el Sol).
+  El detector anterior exigía que apareciera en casi todos los cuadros; ahora usa el promedio del segmento (umbral 0,7 de la tríada,
+  0,5 si la canción usa muchas séptimas; maj7 desde 0,3).
+- **E7 salía Em**: la tonalidad (Sol) favorecía sus acordes propios y castigaba E7 (dominante secundaria). Ahora las dominantes
+  secundarias (La7, Si7, Mi7, Fa#7 en Sol) y el iv prestado (Dom en Sol) tienen media bonificación.
+- Bajo con menos peso (0,5 → 0,3) e inercia algo mayor, porque sin el piso el bajo es mucho más nítido.
+
+| «Carta» completa vs Chordify | v0.5.3 | v0.6.1 |
+|---|---|---|
+| raíz correcta | 68 % | 72 % |
+| mayor/menor correcto | 57 % | 69 % |
+| cambios encontrados (±1 s) | 72 % | 84 % |
+| cambios de más (sobresegmentación) | 35 % | 25 % |
+| Avanzados: acorde completo (con su séptima) | 41 % | 43 % |
+| E7 reconocido como E7 | 0 % (Em) | 53 % |
+| Am7 / Bm7 / Cmaj7 completos | — | 72 % / 53 % / 75 % |
+
+Otras: «Carta» (grabación anterior) mayor/menor 66 → 85 %, Avanzados 45 → 61 %; «A las nueve» igual en Simples (95 %) y 95 → 92 %
+en Avanzados (alguna séptima de más); cancioneros: en-partitura 95 % igual, F1 de secuencia 57 → 55.
+Lo que sigue fallando: acordes de 1 s antes del I (D7 y Dm7 → G en un tercio del tiempo), Gmaj7 se ve como G (su Fa# es muy suave)
+y Cm7 como Cm. La app cambia los acordes ~0,1–0,2 s después que Chordify según estas referencias (el ajuste «Mostrar los cambios
+antes» lo compensa). Ocho canciones siguen siendo pocas.
+
 ## Novedades de la v0.6.0
 - **Nombre «Mi Cancionero»** (ícono, encabezado, instalación).
 - **Menú ☰ «Mi cancionero»**: todas las canciones guardadas, con filtro, renombrar, borrar, «+ Nueva canción» y **orden propio**

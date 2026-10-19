@@ -51,16 +51,19 @@ export function keyPrior(k: KeyEstimate | null, bonus: number, nq = 12): Float64
   if (!k.minor) {
     set(0, [Q.maj, Q.maj7], 1); set(2, [Q.min, Q.min7], 1); set(4, [Q.min, Q.min7], 1); set(5, [Q.maj, Q.maj7], 1)
     set(7, [Q.maj, Q.dom7], 1); set(9, [Q.min, Q.min7], 1); set(10, [Q.maj], 0.5)
+    // dominantes secundarias (V/V, V/vi, V/ii, V/iii: en Sol, La7, Si7, Mi7, Fa#7) y el iv prestado (Dom en Sol): frecuentes en música popular
+    if (KEYCFG.secondary > 0) { for (const deg of [2, 4, 9, 11]) set(deg, [Q.maj, Q.dom7], KEYCFG.secondary); set(5, [Q.min, Q.min7], KEYCFG.secondary) }
   } else {
     set(0, [Q.min, Q.min7], 1); set(3, [Q.maj, Q.maj7], 1); set(5, [Q.min, Q.min7], 1); set(7, [Q.min, Q.min7], 1)
     set(7, [Q.maj, Q.dom7], 0.7); set(8, [Q.maj, Q.maj7], 1); set(10, [Q.maj, Q.dom7], 1)
+    if (KEYCFG.secondary > 0) { set(2, [Q.maj, Q.dom7], KEYCFG.secondary); set(0, [Q.dom7], KEYCFG.secondary) }
   }
   return p
 }
 
 /** Tonalidad a partir de una primera pasada de acordes: la tonalidad cuyos acordes diatónicos cubren más tiempo.
  *  Más robusta que los perfiles cuando la voz o el bajo sesgan el cromagrama medio. */
-export const KEYCFG = { firstChordBonus: 0 } // desactivado: con «Carta para no llorar» (empieza en el IV) elegía mal la tonalidad
+export const KEYCFG = { firstChordBonus: 0, secondary: 0.5 } // desactivado: con «Carta para no llorar» (empieza en el IV) elegía mal la tonalidad
 
 export function keyFromChords(segs: { start: number; end: number; chord: string }[], profile: Float64Array | null = null, profileWeight = 0): KeyEstimate | null {
   const dur = new Float64Array(24) // raíz*2 + (menor ? 1 : 0)

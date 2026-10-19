@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { moveEnd, moveStart, removeAt, setChordAt, splitAt } from './segments.ts'
+import { markChordAt, moveEnd, moveStart, removeAt, setChordAt, splitAt } from './segments.ts'
 import type { Segment } from './types.ts'
 
 const mk = (): Segment[] => [
@@ -32,4 +32,17 @@ test('splitAt y removeAt', () => {
   s = removeAt(mk(), 1); assert.equal(s.length, 2); assert.equal(s[0].end, 8); assert.ok(contiguous(s))
   s = removeAt(mk(), 0); assert.equal(s[0].start, 0); assert.ok(contiguous(s))
   assert.equal(removeAt([mk()[0]], 0).length, 1)
+})
+
+test('markChordAt: N antes del primer acorde, se extiende hasta el final', () => {
+  const a = markChordAt([], 2, 'G', 100)
+  assert.deepEqual(a.map((s) => [s.start, s.end, s.chord]), [[0, 2, 'N'], [2, 100, 'G']])
+  const b = markChordAt(a, 6.5, 'D', 100)
+  assert.deepEqual(b.map((s) => [s.start, s.end, s.chord]), [[0, 2, 'N'], [2, 6.5, 'G'], [6.5, 100, 'D']])
+})
+
+test('markChordAt: tocar en el mismo instante reemplaza; repetir el mismo acorde no cambia nada', () => {
+  const a = markChordAt(markChordAt([], 0, 'C', 50), 10, 'F', 50)
+  assert.deepEqual(markChordAt(a, 10.05, 'G', 50).map((s) => s.chord), ['C', 'G'])
+  assert.equal(markChordAt(a, 20, 'F', 50), a)
 })

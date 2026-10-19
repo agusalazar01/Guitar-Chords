@@ -4,7 +4,8 @@ import type { Segment } from './types.ts'
 export interface SongSettings { videoId: string | null; transpose: number; offset: number; capo?: number; advanced?: boolean }
 export interface Song {
   id: string; filename: string; createdAt: number; duration: number; method: string; lowConfidence: boolean
-  original: Segment[]; corrections: Segment[] | null; settings: SongSettings; audio: Blob
+  original: Segment[]; corrections: Segment[] | null; settings: SongSettings; audio: Blob | null // null = acordes marcados a mano sobre un video (sin audio)
+  kind?: 'analysis' | 'manual'
   beats?: number[]; bpm?: number | null; downbeat?: number; beatsPerBar?: number; key?: string | null; advanced?: Segment[] // análisis v0.3
 }
 

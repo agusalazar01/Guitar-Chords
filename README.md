@@ -14,8 +14,9 @@ guitarra, bucle, velocidad, transposición y edición. No hay servidor propio ni
 | Buscar en YouTube | **Sí**: requiere tu propia clave de YouTube Data API v3 (opcional, Ajustes); la consulta y la clave se envían a Google. Sin clave, pegá un enlace |
 
 Servidores propios: **ninguno**. El audio nunca sale del teléfono. Por seguridad, la clave de YouTube no se incluye en la APK:
-la escribe cada usuario y queda solo en su dispositivo. El audio de YouTube **no** se extrae ni se analiza; los acordes de un
-archivo propio pueden mostrarse sobre el video con un desfase manual.
+la escribe cada usuario y queda solo en su dispositivo. El audio de YouTube **no** se extrae, no se capta y no se analiza, y la app
+**nunca** usa el micrófono. Con un video podés: analizar tu propio MP3/WAV de la misma canción (los acordes quedan unidos al video y
+se abren solos cuando lo volvés a elegir) o **marcar los acordes a mano** mientras suena el video (ver «Videos de YouTube»).
 
 ## Motor de reconocimiento v0.5: híbrido IA + croma + HMM (todo en el teléfono)
 1. **Basic Pitch** (Spotify; código y pesos Apache-2.0, `public/models/LICENSE-basic-pitch.txt`; modelo ONNX de 230 KB) estima la
@@ -26,6 +27,23 @@ archivo propio pueden mostrarse sobre el video con un desfase manual.
    guitarra arpegiada con bajo alternado casi no pesa; en canciones con bajista, sí.
 4. Tonalidad por acordes (dos pasadas) como bonificación suave + **Viterbi** con más probabilidad de cambio sobre los pulsos.
 5. Si el modelo no carga, el worker usa el **motor clásico v0.4.2** (se conserva completo) y la app lo avisa.
+
+### Cambios de la v0.5.3
+- **Séptimas (modo Avanzados), adaptativo por canción**: primero se buscan séptimas con un criterio estricto sobre las notas medias
+  (C3–E5) que da Basic Pitch; si al menos el 15 % del tiempo ya son séptimas, la canción «usa séptimas» y se aplica un criterio más
+  sensible (la séptima menor o mayor debe estar presente en ≥ 75 % de los cuadros del acorde con ≥ 60 % de la energía de la tríada).
+  Si no, queda el estricto, para no inventar séptimas en canciones con tríadas. «Carta» (séptimas): completo 26 % → **45 %**;
+  «A las nueve» (sin séptimas): 95 % → 95 % (sin séptimas falsas); cancioneros sin cambio relevante (94,8 → 94,7 % en-partitura).
+- **Tiempos**: filtro de mediana del croma de 5 → 7 cuadros (menos cambios espurios en «Carta»: sobresegmentación 27 → 25 %,
+  mayor/menor 63 → 66 %). Probé además afinar cada frontera con las notas de Basic Pitch a ~23 ms y otros valores de inercia
+  y adelanto: **no mejoraron** contra Chordify, así que no se incluyeron. El retraso mediano ya está por debajo de un cuadro de
+  análisis (93 ms): «A las nueve» −43 ms, «Carta» +84 ms. Nuevo ajuste **«Mostrar los cambios antes»** (Ajustes, 0–0,5 s) para
+  ver el próximo acorde con anticipación.
+- **Diagramas en orden convencional**: abierta → cejilla más cercana a la cejuela → variante simplificada → formas móviles de menor
+  a mayor traste. F muestra primero la cejilla completa en el traste 1; Bm/B/C#m/Bb, la forma de La (traste 2/2/4/1).
+  «Priorizar posiciones sin cejilla» (Ajustes) sigue poniendo primero las simplificadas.
+- **«+ Nueva»** (arriba): empieza otra canción sin recargar la página; lo guardado sigue en «Canciones guardadas».
+- **Videos de YouTube**: reapertura automática de los acordes guardados para un video y modo «Marcar acordes» (ver abajo).
 
 ### Cambios de la v0.5.2
 - **Causa del fallo del motor de IA** («no available backend found … Importing a module script failed»): la app importaba la entrada
@@ -47,8 +65,9 @@ Referencias con tiempos: lo que muestra Chordify en las 2 grabaciones de pantall
 |---|---|---|---|---|---|
 | v0.3 (app anterior) | 61 % | 27 % | 27 % | 8 % | 90,9 % / 31,6 |
 | clásico v0.4.2 | 93 % | 45 % | 40 % | 2 % | 96,6 % / 61,4 |
-| **híbrido v0.5** | **94 %** | **78 %** | **63 %** | **15 %** | 95,0 % / 58,3 |
-Cambios encontrados (±1 s) y retraso mediano: «A las nueve» 100 % y +34 ms; «Carta» 80 % y +143 ms (v0.4.2: 85 % y +134 ms).
+| híbrido v0.5.0 | 94 % | 78 % | 63 % | 15 % | 95,0 % / 58,3 |
+| **híbrido v0.5.3** | **95 %** | **78 %** | **66 %** | **45 %** | 94,8 % / 57,3 |
+Cambios encontrados (±1 s) y retraso mediano (v0.5.3): «A las nueve» 100 % y −43 ms; «Carta» 83 % y +84 ms (v0.4.2: 85 % y +134 ms).
 El híbrido mejora mucho la raíz en la canción con bajo y séptimas rápidas, empata en «A las nueve» y queda apenas por debajo del
 clásico en los 4 cancioneros (guitarra arpegiada). Las séptimas exactas siguen siendo débiles (15 %): bajar la penalización las sube en
 «Carta» (hasta 39 %) pero agrega séptimas falsas en «A las nueve» (de 86 % a 40 %), así que el modo Avanzados quedó conservador.
@@ -131,6 +150,15 @@ v0.4.2 quita el desempate por «primer acorde» (en esta canción, que empieza e
 
 Reproducir la medición: `frontend/tools/eval-real.ts` (instrucciones en el archivo). Límites de archivo: 40 MB y 15 min.
 
+## Videos de YouTube (v0.5.3)
+- **Marcar acordes**: elegí un video (enlace o búsqueda), tocá «Marcar los acordes de este video», elegí la tonalidad y, mientras suena,
+  tocá cada acorde cuando empieza (hay paleta con los acordes de la tonalidad, los ya usados, «N» y un campo para cualquier otro).
+  Se puede pausar, retroceder, volver a marcar encima o deshacer; luego se edita como cualquier canción (tiempos, dividir, eliminar).
+  Se guarda en el teléfono unido al video, sin audio. No hay análisis automático en este modo.
+- **Acordes analizados de tu archivo**: si analizás un MP3/WAV con un video abierto (o elegís el video con la canción abierta), quedan
+  unidos. Al volver a elegir ese video, sus acordes se abren solos. Para otra versión del video, usá «Alinear» o el desfase.
+- Lo que **no** hace: captar, grabar, separar o descargar el audio de YouTube, ni usar el micrófono.
+
 ## ¿Analizar el audio de YouTube en tiempo real? Decisión: no
 - **Técnicamente** (no comprobado en un dispositivo): el reproductor IFrame de YouTube no entrega audio. En Android 10+ la API
   `AudioPlaybackCapture` copia audio de reproductores `USAGE_MEDIA/GAME/UNKNOWN` y exige permiso `RECORD_AUDIO`, el aviso de consentimiento de
@@ -143,7 +171,8 @@ Reproducir la medición: `frontend/tools/eval-real.ts` (instrucciones en el arch
   Si en el futuro conseguís autorización o una fuente de acordes con licencia, la arquitectura (motor separado del reproductor) lo permite.
 
 ## Datos en el teléfono
-Se guardan en IndexedDB: audio, acordes originales, correcciones, transposición, desfase y video asociado. Borrá una canción
+Se guardan en IndexedDB: audio, acordes originales, correcciones, transposición, desfase y video asociado (las canciones marcadas
+sobre un video no guardan audio). Borrá una canción
 con «Borrar» (elimina también su audio). Desinstalar la app o borrar sus datos elimina todo. No hay copias de seguridad ni sincronización.
 
 ## Versión web de prueba (GitHub Pages)

@@ -43,3 +43,20 @@ export function removeAt(segs: Segment[], i: number): Segment[] {
   else out[0] = { ...out[0], start: segs[i].start }
   return out
 }
+
+/** Marca «desde t suena este acorde» (modo para videos de YouTube: se toca el acorde cuando empieza).
+ *  Los segmentos cubren [0, duración]; antes del primer acorde marcado queda «N» (sin acorde). */
+export function markChordAt(segs: Segment[], t: number, chord: string, duration: number): Segment[] {
+  const v = round(Math.max(0, t)), end = Math.max(duration, v + 1)
+  if (!segs.length) return v > MIN ? [{ start: 0, end: v, chord: 'N', confidence: null }, { start: v, end, chord, confidence: null }] : [{ start: 0, end, chord, confidence: null }]
+  let out = segs
+  const last = out[out.length - 1]
+  if (last.end < end) out = [...out.slice(0, -1), { ...last, end }]
+  const i = out.findIndex((s) => v >= s.start && v < s.end)
+  if (i < 0) return out
+  const s = out[i]
+  if (v - s.start < MIN) return s.chord === chord ? out : setChordAt(out, i, chord)
+  if (s.chord === chord) return out
+  const split = splitAt(out, i, v)
+  return split === out ? out : setChordAt(split, i + 1, chord)
+}

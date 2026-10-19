@@ -72,27 +72,34 @@ export function getDiagrams(name: string): Diagram[] {
   const [root, q] = n
   const chord = root + q, out: Diagram[] = []
   if (OPEN[chord]) out.push(diagram(chord, 'Abierto', OPEN[chord][0], OPEN[chord][1]))
-  if (chord === 'F') out.push(diagram('F', 'Simplificado', [-1, -1, 3, 2, 1, 1], [0, 0, 3, 2, 1, 1], { fret: 1, from_string: 4, to_string: 5 }))
+  // Orden convencional: abierta → cejilla más cercana a la cejuela (F = cejilla traste 1, Bm = forma de La traste 2) →
+  // variantes simplificadas → formas móviles de menor a mayor traste.
+  const barres: { fret: number; d: Diagram }[] = []
   if (q === '' || q === 'm') {
     const r = NOTES.indexOf(root), eF = (r - 4 + 12) % 12, aF = (r - 9 + 12) % 12
     const src = 'Forma de cejilla desplazada'
     if (eF) {
       const b = q === '' ? [0, 2, 2, 1, 0, 0] : [0, 2, 2, 0, 0, 0]
-      out.push(diagram(chord, `Cejilla (forma de Mi, traste ${eF})`, b.map((x) => eF + x), q === '' ? [1, 3, 4, 2, 1, 1] : [1, 3, 4, 1, 1, 1], { fret: eF, from_string: 0, to_string: 5 }, src))
+      barres.push({ fret: eF, d: diagram(chord, `Cejilla (forma de Mi, traste ${eF})`, b.map((x) => eF + x), q === '' ? [1, 3, 4, 2, 1, 1] : [1, 3, 4, 1, 1, 1], { fret: eF, from_string: 0, to_string: 5 }, src) })
     }
     if (aF) {
       const b = q === '' ? [0, 2, 2, 2, 0] : [0, 2, 2, 1, 0]
-      out.push(diagram(chord, `Cejilla (forma de La, traste ${aF})`, [-1, ...b.map((x) => aF + x)], q === '' ? [0, 1, 3, 3, 3, 1] : [0, 1, 3, 4, 2, 1], { fret: aF, from_string: 1, to_string: 5 }, src))
+      barres.push({ fret: aF, d: diagram(chord, `Cejilla (forma de La, traste ${aF})`, [-1, ...b.map((x) => aF + x)], q === '' ? [0, 1, 3, 3, 3, 1] : [0, 1, 3, 4, 2, 1], { fret: aF, from_string: 1, to_string: 5 }, src) })
     }
   }
-  const r = NOTES.indexOf(root)
+  barres.sort((a, b) => a.fret - b.fret)
+  out.push(...barres.map((x) => x.d))
+  if (chord === 'F') out.splice(out.length - barres.length + 1, 0, diagram('F', 'Simplificado', [-1, -1, 3, 2, 1, 1], [0, 0, 3, 2, 1, 1], { fret: 1, from_string: 4, to_string: 5 }))
+  const r = NOTES.indexOf(root), moves: { fret: number; d: Diagram }[] = []
   for (const sh of SHAPES.filter((x) => x.q === q)) {
     let f = (r - (sh.on === 6 ? 4 : 9) + 12) % 12
     if (f < (sh.minFret ?? 1)) f += 12 // traste 0 = forma abierta (ya cubierta o no aplicable): se usa la octava
     const real = sh.off.map((o) => (o === null ? -1 : f + o))
     const barre = sh.barre ? { fret: f + sh.barre[0], from_string: sh.barre[1], to_string: sh.barre[2] } : null
-    out.push(diagram(chord, `Forma móvil (raíz en la ${sh.on}ª, traste ${f})`, real, sh.fingers, barre, 'Forma móvil comprobada por notas'))
+    moves.push({ fret: f, d: diagram(chord, `Forma móvil (raíz en la ${sh.on}ª, traste ${f})`, real, sh.fingers, barre, 'Forma móvil comprobada por notas') })
   }
+  moves.sort((a, b) => a.fret - b.fret)
+  out.push(...moves.map((x) => x.d))
   return out
 }
 

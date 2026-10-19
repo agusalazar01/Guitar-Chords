@@ -17,7 +17,7 @@ export interface AnalysisOutput {
 /** Parámetros elegidos con 4 canciones reales (ver README). offStay/onStay: probabilidad de mantener el acorde fuera/sobre un pulso. */
 export const PARAMS = {
   keyBonus: 0.75, offStay: 0.99, onStay: 0.9, extPenalty: 1.2, minBeatStrength: 0.25,
-  bassWeight: 0, chromaMin: 90, chromaMax: 700, median: 5, bgAlpha: 0, bgWinSec: 6, inversionShare: 0.6, inversionMinSec: 0.8, inversionMinLow: 0.05, keyFromChords: true, keyProfileWeight: 0, snapToBeat: 0,
+  bassWeight: 0, chromaMin: 90, chromaMax: 700, median: 7, bgAlpha: 0, bgWinSec: 6, inversionShare: 0.6, inversionMinSec: 0.8, inversionMinLow: 0.05, keyFromChords: true, keyProfileWeight: 0, snapToBeat: 0,
 }
 
 /** Motor v0.1 (sin tonalidad, pulso ni bajo). Se conserva para medir mejoras. */
@@ -138,8 +138,9 @@ export function analyzeHybrid(samples: Float32Array, sampleRate: number, rows: F
   const tr = trackBeats(ons.env, ons.hopSec, ons.offsetSec)
   const usable = tr.beats.length >= 8 && tr.strength > PARAMS.minBeatStrength && tr.bpm !== null
   onProgress?.(0.8)
-  const bp = noteChroma(rows)
-  const f = { treble: fuseFeatures(chroma, centers, bp.treble, bp.centers, NPARAMS.fuseWeight), bass: resample(bp.bass, bp.centers, centers), centers, hopSec: sp.hop / sampleRate }
+  const bp = noteChroma(rows), bpMid = noteChroma(rows, 8, 48, 1, 48, 76)
+  const f = { treble: fuseFeatures(chroma, centers, bp.treble, bp.centers, NPARAMS.fuseWeight), bass: resample(bp.bass, bp.centers, centers), centers, hopSec: sp.hop / sampleRate,
+    notes: resample(bp.treble, bp.centers, centers), mid: resample(bpMid.treble, bpMid.centers, centers) }
   const duration = samples.length / sampleRate
   const r = analyzeNotes(f, duration, { ...tr, usable })
   onProgress?.(1)

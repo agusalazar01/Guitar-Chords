@@ -32,7 +32,7 @@ export function bpUnwrap(outs: Float32Array[], nFrames: number): Float32Array[] 
   return rows
 }
 
-export interface NoteFeatures { treble: Float64Array[]; bass: Float64Array[]; centers: number[]; hopSec: number }
+export interface NoteFeatures { treble: Float64Array[]; bass: Float64Array[]; centers: number[]; hopSec: number; notes?: Float64Array[]; mid?: Float64Array[] }
 
 /** Promedia `group` cuadros y pliega en 12 clases de altura: agudos (≥ splitMidi) y graves (< splitMidi, la nota más grave pesa más). */
 export function noteChroma(rows: Float32Array[], group = 8, splitMidi = 48, power = 1, minMidi = 21, maxMidi = 108): NoteFeatures {

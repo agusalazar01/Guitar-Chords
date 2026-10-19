@@ -21,9 +21,21 @@ jobs:
       - name: Clave fija de la app (secreto de GitHub; si no está, se usa la de depuración)
         env:
           MC_KEYSTORE_B64: ${{ secrets.MC_KEYSTORE_B64 }}
+          MC_KEYSTORE_PASS: ${{ secrets.MC_KEYSTORE_PASS }}
+          MC_KEY_ALIAS: ${{ secrets.MC_KEY_ALIAS }}
         run: |
           if [ -n "$MC_KEYSTORE_B64" ]; then
-            echo "$MC_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/mc.jks"
+            # se quitan espacios y saltos de línea que se cuelan al copiar desde el teléfono
+            CLEAN=$(printf '%s' "$MC_KEYSTORE_B64" | tr -d ' \r\n\t')
+            echo "Largo del secreto MC_KEYSTORE_B64: ${#CLEAN} caracteres (la clave de Mi Cancionero tiene 3568)"
+            if ! printf '%s' "$CLEAN" | base64 -d > "$RUNNER_TEMP/mc.jks" 2>/dev/null; then
+              echo "::error title=Clave fija::MC_KEYSTORE_B64 no se pudo leer (largo ${#CLEAN}, se esperaban 3568). Volvé a copiar la línea larga completa del archivo de secretos."
+              exit 1
+            fi
+            if ! keytool -list -keystore "$RUNNER_TEMP/mc.jks" -storepass "$MC_KEYSTORE_PASS" -alias "$MC_KEY_ALIAS" > /dev/null 2>&1; then
+              echo "::error title=Clave fija::La clave se leyó pero la contraseña (MC_KEYSTORE_PASS) o el alias (MC_KEY_ALIAS) no coinciden. Revisá que no tengan espacios de más."
+              exit 1
+            fi
             echo "MC_KEYSTORE=$RUNNER_TEMP/mc.jks" >> "$GITHUB_ENV"
             echo "Firma: clave fija (las versiones nuevas se instalan encima sin perder canciones)"
           else

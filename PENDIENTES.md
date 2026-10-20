@@ -198,3 +198,32 @@ Sigue pendiente:
   4. Segunda fuente de letras (lyrics.ovh, solo texto) cuando LRCLIB no responde o no encuentra: se ofrece para elegir.
   A probar en el teléfono: 2 (parte nativa) y 4 (que lyrics.ovh responda).
 - Siguen para después: «Marcar cambios» por estrofa, sincronizar la letra con el canto (audio propio), motor de IA (en pausa).
+
+## 15. v0.8.3 — prueba automática con 45 canciones de LaCuerda (desde el Chrome del usuario)
+- Método: LaCuerda (cifrado completo) + LRCLIB (letra sincronizada) traídos desde el navegador del usuario y pasados por el mismo
+  código de la app; los textos no se guardan en el repositorio. Chordify no se automatizó (cupo gratis «0/2» y sus condiciones).
+- Nuevas notaciones leídas: acordes unidos con guiones («Bm-G-D-A», «(Bm-G-D-A)»), extensiones con barra («F#7/9», «6/9»),
+  etiquetas sin «:» en la línea de acordes («INTRO Bm Em7 … x 2»), comentarios junto a 3+ acordes («FA#m RE LA Tablatura abajo»),
+  notaciones propias («B7.9», «F7.13», «E(s3)6», «C#7[4- 3]», «F#m7*»), tablaturas con prefijo («1) G|--4--») o sin barra («e-0-2-3»).
+- Estrofas repetidas: el modelo puede ser la mitad de una estrofa larga, se compara también el largo de las líneas, y la parte que
+  sigue a un modelo tiene preferencia (estribillo en dos mitades). «Brindis por Pierrot»: 4 de 91 líneas sin acorde, con cada
+  estrofa y cada mitad del estribillo con sus acordes.
+- Aviso al importar: qué partes no trae la página y si se completaron copiando una estrofa parecida (para revisarlas).
+- Desde el navegador, LRCLIB responde (la letra automática funciona en la versión web).
+- Resultado en las 45 canciones: 173 de 1378 líneas cantadas sin acorde antes de los últimos ajustes de estrofas; el resto son en
+  su mayoría acordes que se mantienen o partes que la página no trae. Quedan sin leer errores de tipeo de la página («An», «Bsdim»).
+- Comparación con Chordify (mismo video; autorizada por el usuario, 2 canciones): «Zafar» (Chordify: La menor, 100 BPM, 441,3 Hz) y
+  «Doña Soledad» (Si mayor, 111 BPM, 444,9 Hz). Con v0.8.3 la cantidad de cambios ya se parece (Zafar 68 contra 70), pero los acordes
+  de la app caen ~0,5 s ANTES que en Chordify: LRCLIB marca el comienzo del canto y el acorde entra en el tiempo fuerte, después de
+  las primeras sílabas. Correr 0,5 s: Zafar 44 % → 59 % del tiempo igual a Chordify; Doña Soledad 54 % → 59 %. A decidir con el usuario
+  (puede sentirse «más lento»; existe el ajuste «adelantar en pantalla»). Mostrar la afinación en Hz (el motor ya la estima).
+- Medición contra referencias exactas (corpus ChoCo / Isophonics: acordes marcados al segundo sobre la grabación original), 31 canciones
+  de The Beatles y Queen con cifrado de Cifra Club + letra de LRCLIB (misma duración que la grabación), pasadas por el código de v0.8.3:
+  · Acorde correcto el 34 % del tiempo; 48 % si se tiene en cuenta que muchos cifrados están en otro tono (cejilla o afinación:
+    «Michelle» cejilla 5, «In My Life» y «Norwegian Wood» cejilla 2, «Yesterday» guitarra un tono abajo).
+  · Error mediano de cada cambio de acorde: 0,65 s (en varias canciones 1–1,5 s): el punto débil es repartir los acordes dentro de
+    cada línea por la cantidad de letras.
+  · Correr todo 0,5 s más tarde EMPEORA el promedio (34 % → 30 %): no se aplica (la comparación con Chordify en 2 canciones decía lo
+    contrario; con 31 referencias exactas no se sostiene).
+  · Fallan del todo los cifrados sin acordes sobre la letra (solo tablatura: «Blackbird», «We Will Rock You»).
+  Próximo paso propuesto: ubicar los cambios dentro de la línea con un pulso regular estimado de la propia letra en vez de por letras.

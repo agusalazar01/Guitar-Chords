@@ -23,7 +23,7 @@ function rootName(r: string): string | null {
 /** Normaliza un acorde de cancionero al formato de la app (raíz con #, calidades conocidas). null si no es un acorde. */
 export function normalizeChord(tok: string): string | null {
   // «A)RE», «B)mim»: marca de sección pegada al acorde. «Am.» o «G,»: algunos cancioneros ponen punto después del acorde.
-  let t = tok.replace(/^[A-Za-z0-9]\)(?=\S)/, '').replace(/[()[\]*]/g, '').replace(/[.,;:]+$/, '')
+  let t = tok.replace(/^[A-Za-z0-9]\)(?=\S)/, '').replace(/[()[\]*]/g, '').replace(/[.,;:]+$/, '').replace(/(\d)\/(\d{1,2})$/, '$1$2') // «F#7/9», «6/9»: extensión, no bajo
   // Notación latina en mayúsculas o minúsculas («RE», «SOL5», «MIm», «mim»). En minúsculas y sin nada más («la», «mi», «si»)
   // es una palabra de la letra, no un acorde.
   const lat = /^(do|re|mi|fa|sol|la|si)(.*)$/i.exec(t)
@@ -31,7 +31,11 @@ export function normalizeChord(tok: string): string | null {
     if (lat[1] === lat[1].toLowerCase() && !lat[2]) return null
     t = lat[1][0].toUpperCase() + lat[1].slice(1).toLowerCase() + lat[2]
   }
-  if (!CHORD_RE.test(t)) return null
+  if (!CHORD_RE.test(t)) {
+    // Notaciones propias de algunos cancioneros: «B7.9», «F7.13», «E(s3)6», «C#7[4-», «F#m7*». Se toma el acorde del comienzo.
+    const pre = /^([A-G][#b]?(?:m(?!aj))?(?:maj7|7M|dim|aug|sus4|sus2|°|º|7|6|9|4)?)[.([*]/.exec(tok.replace(/[.,;:]+$/, ''))
+    return pre && pre[1] !== tok ? normalizeChord(pre[1]) : null
+  }
   const m = new RegExp(`^(${ROOT})(${QUAL})(?:\\/(${ROOT}))?$`).exec(t)
   if (!m) return null
   const root = rootName(m[1]); if (!root) return null
@@ -61,15 +65,30 @@ function chordTokens(line: string): { pos: number; chord: string }[] | null {
   let other = 0
   for (const t of toks) {
     const raw = t[0]
-    if (/^(\||-+|x\d+|\(?x\d+\)?|\d+x)$/i.test(raw) || /^[A-Za-zÁÉÍÓÚáéíóúñ]+:$/.test(raw)) continue
+    if (/^(\||-+|x\d+|\(?x\d+\)?|\d+x|x|\d+|bis)$/i.test(raw) || /^[A-Za-zÁÉÍÓÚáéíóúñ]+:$/.test(raw) || /^[\d\-[\]().]+$/.test(raw)) continue
+    if (/^(intro|introducci[oó]n|coro|estribillo|puente|solo|final|interludio|outro|riff|verso|estrofa|pre-?coro)$/i.test(raw)) continue // etiqueta sin «:»
     const c = normalizeChord(raw)
-    if (c) out.push({ pos: t.index ?? 0, chord: c }); else other++
+    if (c) { out.push({ pos: t.index ?? 0, chord: c }); continue }
+    // «Bm-G-D-A» o «(Bm-G-D-A)»: varios acordes unidos con guiones
+    const parts = raw.replace(/^\(|\)$/g, '').split('-')
+    const pc = parts.length > 1 ? parts.map((x) => normalizeChord(x)) : []
+    if (pc.length && pc.every(Boolean)) { let off = (t.index ?? 0) + (raw.startsWith('(') ? 1 : 0); parts.forEach((x, i) => { out.push({ pos: off, chord: pc[i]! }); off += x.length + 1 }); continue }
+    other++
   }
-  return out.length && out.length >= 2 * other ? out : null
+  // casi todo acordes; con 3 o más acordes alcanza con que haya tantos acordes como otras palabras («FA#m RE LA  Tablatura abajo»)
+  return out.length && (out.length >= 2 * other || (out.length >= 3 && out.length >= other)) ? out : null
 }
 
 /** Línea de tablatura («E|---0---3--|»): no es letra ni acordes; se ignora. */
-export const isTabLine = (l: string) => /^\s*(?:[EBGDAe]|[Mm][Ii]|[Ss][Ii]|[Ss][Oo][Ll]|[Rr][Ee]|[Ll][Aa])\s*[|:]?[-|0-9hpbrsx/\\~^().\s]{6,}$/.test(l) && /-{3,}/.test(l)
+export const isTabLine = (l: string) => {
+  const t = l.replace(/^\s*\d+\)\s*/, '') // «1)  G|--4---»
+  if (/^\s*(?:[EBGDAe]|[Mm][Ii]|[Ss][Ii]|[Ss][Oo][Ll]|[Rr][Ee]|[Ll][Aa])\s*[|:]?[-|0-9hpbrsx/\\~^().\s]{6,}$/.test(t) && /-{3,}/.test(t)) return true
+  // cuerda + mayoría de guiones y números («e-0-0-2-2-3», «B-3-(8 veces)-1-0---»)
+  const m = /^\s*(?:[EBGDAe]|[Mm][Ii]|[Ss][Ii]|[Ss][Oo][Ll]|[Rr][Ee]|[Ll][Aa])\s*[|:-](.*)$/.exec(t)
+  if (!m || m[1].length < 8) return false
+  const tab = (m[1].match(/[-|0-9]/g) ?? []).length
+  return /-{2,}/.test(m[1]) && tab >= 0.7 * m[1].replace(/\s/g, '').length
+}
 
 /** Datos de la página: «Tono: G», «Tonalidad: Re menor», «Tom: Am» (Cifra Club) y «Capo en 2», «Cejilla en el 3er traste»,
  *  «Capotraste na 2ª casa». */
@@ -249,7 +268,7 @@ function alignWords(A: CWord[], B: LWord[]): Int32Array {
  *  alinean con las de la letra sincronizada sin importar cómo corta cada uno las líneas. Las palabras que no coinciden toman un
  *  tiempo intermedio entre sus vecinas; las líneas solo de acordes (intro, puentes) se reparten en el hueco antes del canto; las
  *  líneas que el cifrado escribe una sola vez (estribillo) se repiten donde la letra las vuelve a cantar. */
-export function alignCifrado(cif: CifradoLine[], lrc: LyricLine[] | null): ChordEvent[] {
+export function alignCifrado(cif: CifradoLine[], lrc: LyricLine[] | null, opts: { fill?: boolean } = {}): ChordEvent[] {
   const sung = (lrc ?? []).filter((l) => l.text.trim())
   const sequential = (t0: number) => { let t = t0; const out: ChordEvent[] = []; for (const c of cif) for (const x of c.chords) { out.push({ l: t, chord: x.chord }); t += 2 } return out }
   if (!sung.length) return sequential(0)
@@ -302,7 +321,7 @@ export function alignCifrado(cif: CifradoLine[], lrc: LyricLine[] | null): Chord
     const line = cif[gb], len = Math.max(line.text.trimEnd().length, ...line.chords.map((c) => c.pos + 1), 1)
     for (const c of line.chords) ev.push({ l: t0 + (Math.min(c.pos, len) / len) * span, chord: c.chord })
   })
-  ev.push(...fillSections(ev, sung, lrc ?? []))
+  if (opts.fill !== false) ev.push(...fillSections(ev, sung, lrc ?? [])) // fill: false → solo lo que trae la página (para avisar qué falta)
   ev.sort((a, b) => a.l - b.l)
   const out: ChordEvent[] = []
   for (const e of ev) {
@@ -346,17 +365,30 @@ function fillSections(ev: ChordEvent[], sung: LyricLine[], raw: LyricLine[]): Ch
   const secs = lyricSections(sung, raw)
   const chorded = (sec: number[]) => sec.filter((j) => lineEv[j].length).length / sec.length
   const added: ChordEvent[] = []
+  // Modelos posibles: estrofas con acordes, o un tramo de una estrofa más larga del mismo tamaño (la mitad de una de 8 líneas).
+  const cands: { P: number[]; o: number }[] = []
+  let prevEnd = -2 // última línea del modelo usado antes: la parte que le sigue en la canción tiene preferencia (estribillo en dos mitades)
+  const len = (j: number) => Math.max(1, sung[j].text.trim().length)
   secs.forEach((T, ti) => {
-    if (chorded(T) >= 0.5) return
-    let best: number[] | null = null, bestScore = 0.5
+    if (chorded(T) >= 0.5) { prevEnd = T[T.length - 1]; return }
+    cands.length = 0
     for (let pi = 0; pi < ti; pi++) {
       const P = secs[pi]
       if (chorded(P) < 0.6) continue
-      const sim = T.filter((j) => P.some((k) => similarity(sung[k].text, sung[j].text) >= 0.6)).length
-      const len = T.length === P.length ? 1 : T.length % P.length === 0 || P.length % T.length === 0 ? 0.5 : 0
-      const score = 2 * sim + len
+      if (P.length > T.length && P.length % T.length === 0) for (let o = 0; o < P.length; o += T.length) cands.push({ P: P.slice(o, o + T.length), o })
+      else cands.push({ P, o: 0 })
+    }
+    let best: number[] | null = null, bestScore = 0.5
+    for (const { P, o } of cands) {
+      const sim = T.filter((j) => P.some((k) => similarity(sung[k].text, sung[j].text) >= 0.75)).length
+      const lenScore = T.length === P.length ? 1 : T.length % P.length === 0 || P.length % T.length === 0 ? 0.5 : 0
+      // forma: largo parecido de cada línea (las estrofas se parecen entre sí más que a un estribillo)
+      const shape = T.reduce((acc, j, i) => { const k = P[i % P.length]; return acc + 1 - Math.abs(len(j) - len(k)) / Math.max(len(j), len(k)) }, 0) / T.length
+      // tramo del comienzo de una estrofa: leve preferencia (lo que sigue lo decide la continuidad)
+      const score = 2 * sim + lenScore + 1.5 * shape + (P[0] === prevEnd + 1 ? 1 : 0) + (o === 0 ? 0.4 : 0)
       if (score > bestScore) { bestScore = score; best = P }
     }
+    prevEnd = best ? best[best.length - 1] : -2
     if (!best) return
     T.forEach((j, i) => {
       if (lineEv[j].length) return

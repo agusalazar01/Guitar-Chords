@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { alignCifrado, cifradoLyrics, cifradoMeta, cifradoSegments, lyricsFromChords, MIN_CHORD_GAP, normalizeChord, parseCifrado, uncoveredParts, upgradeCifrado } from './cifrado.ts'
+import { alignCifrado, cifradoLyrics, cifradoMeta, cifradoSegments, lyricsFromChords, isTabLine, MIN_CHORD_GAP, normalizeChord, parseCifrado, uncoveredParts, upgradeCifrado } from './cifrado.ts'
 import { addAnchor } from './lyrics.ts'
 
 test('normalizeChord: inglés, latino, bemoles y calidades', () => {
@@ -159,4 +159,37 @@ test('uncoveredParts: avisa las estrofas de la letra que quedaron sin ningún ac
   const lrc = [{ t: 10, text: 'uno' }, { t: 13, text: 'dos' }, { t: 16, text: '' }, { t: 25, text: 'Tengo algo mal pensado' }, { t: 28, text: 'otra' }]
   assert.deepEqual(uncoveredParts([{ l: 10, chord: 'G' }, { l: 13.5, chord: 'D' }], lrc), ['Tengo algo mal pensado'])
   assert.deepEqual(uncoveredParts([{ l: 10, chord: 'G' }, { l: 25, chord: 'D' }], lrc), [])
+})
+
+test('Cifrados de LaCuerda: acordes con guiones, extensiones «7/9», etiquetas sin «:» y tablaturas con prefijo o sin barra', () => {
+  const ch = (t: string) => parseCifrado(t).flatMap((l) => l.chords.map((c) => c.chord))
+  assert.deepEqual(ch('Bm-G-D-A       Bm-G-D-A\nDe aquel amor, de música ligera'), ['Bm', 'G', 'D', 'A', 'Bm', 'G', 'D', 'A'])
+  assert.deepEqual(ch('Bm      G      D         A         (Bm-G-D-A)\nElla durmio'), ['Bm', 'G', 'D', 'A', 'Bm', 'G', 'D', 'A'])
+  assert.deepEqual(ch('F#7/9        Bm\nY el arriero va'), ['F#7', 'Bm'])
+  assert.deepEqual(ch('INTRO Bm Em7 A D F#   x 2'), ['Bm', 'Em7', 'A', 'D', 'F#'])
+  assert.deepEqual(ch('FA#m RE LA        Tablatura Abajo'), ['F#m', 'D', 'A'])
+  assert.equal(ch('LA calle Durazno').length, 0) // letra en mayúsculas, no acordes
+  for (const t of ['    1)  G|--4---2---0----------------0------0-------0---0-|', 'e-0-0-2-2-3-3-5-5-7-7-8-10-8-10---17--17', 'B-3-(8 veces)-1-0--------------------3---------3--3/5-3---'])
+    assert.ok(isTabLine(t), t)
+  assert.ok(!isTabLine('Me voy, volando por ahí'))
+})
+
+test('Notaciones propias de algunos cancioneros: se toma el acorde del comienzo', () => {
+  assert.deepEqual(['B7.9', 'F7.13', 'E(s3)6', 'C#7[4-', 'F#m7*', 'Bb*', 'B4.7/F#'].map(normalizeChord), ['B7', 'F7', 'E', 'C#7', 'F#m7', 'A#', 'Bsus4'])
+  assert.deepEqual(parseCifrado('C#7[4-    3]       F#m7*\n  No te enamores de nadie').flatMap((l) => l.chords.map((c) => c.chord)), ['C#7', 'F#m7'])
+  assert.equal(normalizeChord('Brilla'), null)
+  assert.equal(normalizeChord('Amor.'), null)
+})
+
+test('fillSections: una estrofa repetida en dos mitades copia cada mitad de la estrofa modelo, y fill:false deja solo lo de la página', () => {
+  const v1 = ['No lo vieron a Molina', 'Que no pisa más el bar', 'Dónde está la Gran Muñeca', 'Que no trilla el bulevar', 'Esta noche es de recuerdos', 'Este brindis por Pierrot', 'Volverás Mario Benítez', 'Con tu Línea Maginot']
+  const ch = ['Bm', 'F#m7', 'Em7', 'D7', 'C#7', 'Bm7', 'C#7', 'C#dim']
+  const txt = v1.flatMap((t, i) => [ch[i], t]).join('\n') + '\n\nNo se acuerdan de la Bruta\nCon Pianito en su lugar\nNo me olvido más del Ñato\nImitando a Dogomar\nEsta noche es de recuerdos\nEste brindis por La Unión\nAhí estás Martíncorena\nEscuchando esta canción'
+  const v3 = ['No se acuerdan de la Bruta', 'Con Pianito en su lugar', 'No me olvido más del Ñato', 'Imitando a Dogomar', 'Esta noche es de recuerdos', 'Este brindis por La Unión', 'Ahí estás Martíncorena', 'Escuchando esta canción']
+  const lrc = [...v1.map((text, i) => ({ t: 10 + i * 3, text })), { t: 35, text: '' }, ...v3.map((text, i) => ({ t: 40 + i * 3, text }))]
+  const at = (ev: { l: number; chord: string }[], t: number) => ev.filter((e) => e.l <= t + 0.3).at(-1)?.chord
+  const ev = alignCifrado(parseCifrado(txt), lrc)
+  assert.deepEqual([40, 43, 46, 49, 52].map((t) => at(ev, t)), ['Bm', 'F#m7', 'Em7', 'D7', 'C#7'])
+  const raw = alignCifrado(parseCifrado(txt), lrc, { fill: false })
+  assert.ok(raw.length < ev.length)
 })

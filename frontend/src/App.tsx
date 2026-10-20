@@ -379,8 +379,16 @@ export default function App() {
       ...(ownLyrics ? { lyrics: { ...pastedLyrics(ownLyrics, cur.filename), source: 'manual' as const, artistName: 'letra de la página de acordes' } } : {}),
       method: cur.lyrics?.synced ? 'acordes del cancionero ubicados con la letra' : 'acordes del cancionero sin letra con tiempos (2 s por acorde: ajustalos)' })
     // Partes de la letra sin ningún acorde: la página no las trae (versión incompleta) → avisar para probar otra versión.
-    const miss = [...new Set(uncoveredParts(events, cur.lyrics?.synced ?? null))]
-    const missMsg = miss.length ? `La página no trae acordes para ${miss.length === 1 ? 'la parte' : `${miss.length} partes`} que empieza${miss.length === 1 ? '' : 'n'} con ${miss.slice(0, 3).map((m) => `«${m.slice(0, 40)}»`).join(', ')}. Si las necesitás, probá otra versión de la canción en el cancionero.` : null
+    // Partes que la página no trae: se avisa cuáles quedaron sin acordes y cuáles se completaron copiando una estrofa parecida.
+    const synced = cur.lyrics?.synced ?? null
+    const missRaw = [...new Set(uncoveredParts(alignCifrado(cif, synced, { fill: false }), synced))]
+    const missNow = new Set(uncoveredParts(events, synced))
+    const guessed = missRaw.filter((m) => !missNow.has(m)), empty = missRaw.filter((m) => missNow.has(m))
+    const q = (xs: string[]) => xs.slice(0, 3).map((m) => `«${m.slice(0, 40)}»`).join(', ')
+    const missMsg = [
+      guessed.length ? `La página no trae acordes para la parte que empieza con ${q(guessed)}: se completó con los de una estrofa parecida. Revisala.` : '',
+      empty.length ? `Quedó sin acordes la parte que empieza con ${q(empty)}. Si la necesitás, probá otra versión de la canción en el cancionero.` : '',
+    ].filter(Boolean).join(' ') || null
     setBase(segs); setUndo([]); setSource('analysis'); setFocusIdx(null); setMarkOpen(false); setPasteOpen(false); setPasteText(''); setNotice(missMsg); setAdvanced(true)
     return true
   }

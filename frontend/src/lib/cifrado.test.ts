@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { alignCifrado, cifradoSegments, normalizeChord, parseCifrado } from './cifrado.ts'
+import { alignCifrado, cifradoSegments, MIN_CHORD_GAP, normalizeChord, parseCifrado } from './cifrado.ts'
 import { addAnchor } from './lyrics.ts'
 
 test('normalizeChord: inglés, latino, bemoles y calidades', () => {
@@ -89,4 +89,16 @@ Nada fue un error`
   assert.ok(e.l >= 66 && e.l < 68, `E en ${e.l}`) // «Y tú, y tú» al comienzo de la línea unida
   const uh = ev.filter((x) => x.chord === 'E')[2]
   assert.ok(uh.l > 78 && uh.l < 81, `E de «uoh-oh» en ${uh.l}`)
+})
+
+test('alignCifrado: ningún acorde se pierde aunque el último de una línea caiga pegado al primero de la siguiente', () => {
+  const txt = [
+    'Am                        Dm           G', ' Soy de la ciudad con todo lo que ves',
+    'Am                           Dm            G', 'con su ruido, con su gente, consume vejez.',
+    '  Am                    Dm                 G', 'Y no puedo evitar, el humo que entra hoy',
+  ].join('\n')
+  const lrc = [' Soy de la ciudad con todo lo que ves', 'con su ruido, con su gente, consume vejez.', 'Y no puedo evitar, el humo que entra hoy'].map((text, i) => ({ t: 23 + i * 5, text }))
+  const ev = alignCifrado(parseCifrado(txt), lrc)
+  assert.deepEqual(ev.map((e) => e.chord), ['Am', 'Dm', 'G', 'Am', 'Dm', 'G', 'Am', 'Dm', 'G'])
+  for (let i = 1; i < ev.length; i++) assert.ok(ev[i].l - ev[i - 1].l >= MIN_CHORD_GAP - 1e-9, `separación en ${i}`)
 })

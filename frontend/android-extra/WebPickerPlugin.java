@@ -57,8 +57,21 @@ public class WebPickerPlugin extends Plugin {
   public void importPage(PluginCall call) {
     String url = call.getString("url");
     if (url == null || url.isEmpty()) { call.reject("Falta la dirección de la página."); return; }
-    open(call, url, call.getString("title", "Abrí la canción y tocá Importar"), "Importar acordes");
+    open(call, url, call.getString("title", "Abrí la canción y tocá Importar"), call.getString("button", "Importar acordes"),
+      "lyrics".equals(call.getString("mode", "chords")) ? LYRICS_JS : CHORDS_JS);
   }
+
+  /** Cifrado: el bloque <pre> más largo (LaCuerda, Cifra Club) o, si no hay, el texto de la página. */
+  private static final String CHORDS_JS =
+    "(function(){var ps=[].slice.call(document.querySelectorAll('pre'));ps.sort(function(a,b){return b.innerText.length-a.innerText.length});"
+      + "var p=ps[0];return (p&&p.innerText.length>150)?p.innerText:document.body.innerText})()";
+  /** Letra: lo que el usuario seleccionó, o el bloque con más líneas cortas y pocos enlaces (la letra), o el texto de la página. */
+  private static final String LYRICS_JS =
+    "(function(){var sel=String(window.getSelection?window.getSelection():'');if(sel.trim().length>40)return sel;"
+      + "var best='',bs=0;[].slice.call(document.querySelectorAll('pre,div,section,article,p')).forEach(function(e){"
+      + "var t=e.innerText||'';var n=t.split('\\n').filter(function(l){return l.trim().length>0}).length;if(n<6)return;"
+      + "if(t.length/n>70)return;var sc=n-3*e.querySelectorAll('a').length-e.querySelectorAll('button,input,img').length;"
+      + "if(sc>bs){bs=sc;best=t}});return best||document.body.innerText})()";
 
   private void finishWith(JSObject result) {
     if (done) return;
@@ -78,7 +91,9 @@ public class WebPickerPlugin extends Plugin {
     finishWith(r);
   }
 
-  private void open(final PluginCall call, final String url, final String title, final String importLabel) {
+  private void open(final PluginCall call, final String url, final String title, final String importLabel) { open(call, url, title, importLabel, CHORDS_JS); }
+
+  private void open(final PluginCall call, final String url, final String title, final String importLabel, final String script) {
     getActivity().runOnUiThread(() -> {
       if (!done) cancel();
       pending = call;
@@ -105,9 +120,7 @@ public class WebPickerPlugin extends Plugin {
       if (!youtube) {
         Button imp = styled(importLabel, true);
         bar.addView(imp);
-        imp.setOnClickListener(x -> view.evaluateJavascript(
-          "(function(){var ps=[].slice.call(document.querySelectorAll('pre'));ps.sort(function(a,b){return b.innerText.length-a.innerText.length});"
-            + "var p=ps[0];return (p&&p.innerText.length>150)?p.innerText:document.body.innerText})()",
+        imp.setOnClickListener(x -> view.evaluateJavascript(script,
           value -> {
             JSObject r = new JSObject();
             r.put("text", value);
@@ -232,8 +245,11 @@ public class WebPickerPlugin extends Plugin {
       send.setType(call.getString("mime", "application/octet-stream"));
       send.putExtra(Intent.EXTRA_STREAM, uri);
       send.putExtra(Intent.EXTRA_TEXT, call.getString("text", ""));
+      send.setClipData(android.content.ClipData.newRawUri(name, uri)); // sin esto, algunas apps destino no pueden leer el archivo
       send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-      getActivity().startActivity(Intent.createChooser(send, "Compartir canción"));
+      Intent chooser = Intent.createChooser(send, "Compartir canción");
+      chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+      getActivity().startActivity(chooser);
       call.resolve();
     } catch (Exception e) {
       call.reject("No se pudo compartir: " + e.getMessage());

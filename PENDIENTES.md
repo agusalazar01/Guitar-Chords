@@ -135,3 +135,28 @@
 - La primera instalación con la firma fija necesita desinstalar una última vez (la clave anterior era de depuración).
 - Pendientes de antes: segunda fuente de letras, motor (Mi de paso, D7 cortos, Gmaj7/Cm7), detección del canto,
   abrir un .cancionero directamente desde WhatsApp (hoy: guardarlo y usar «Importar»).
+
+## 12. v0.8.1 (revisión del código, 20/10/2026)
+Hecho y verificado en el código (se deja igual):
+- Interfaz: acciones «Letra / Acordes / Opciones», barra mínima, opciones agrupadas (sección 8, puntos 4 y 8); estética de la v0.8.0.
+- Logo, ícono, pantalla de carga con versión y atribución, mate (sección 10, puntos 6 a 9).
+- Modo «Siguiente», «Marcar cambios», compartir, copia de seguridad e importar; firma fija en GitHub Actions.
+- Letra: elección automática estricta, «No es esta letra», búsqueda solo de letras, «+ Nueva» limpia el buscador.
+- Cifrado unido palabra por palabra; búsqueda del cancionero con texto limpio.
+- La prueba «motor-ia» y la versión web pasan en GitHub Actions.
+Nuevo en v0.8.1:
+- Al elegir un video nuevo, la pantalla principal se limpia (lo anterior queda en Mi cancionero).
+- Ningún acorde del cifrado se pierde por caer pegado a otro (mínimo 0,5 s entre cambios); el buscador de acordes prioriza LaCuerda.
+- Letras desde una página web: «Buscar la letra en una página» (en el aviso de letra no encontrada, en la lista de letras sugeridas
+  y en el panel «Letra»). En la APK se abre dentro de la app; se puede seleccionar la letra en la página o tocar «Importar letra»
+  directamente; el texto se limpia y queda en «Pegar letra» para revisarlo. En la web: pestaña aparte + pegar.
+- Compartir como `.cancionero.txt` (text/plain) con permiso de lectura explícito, y botón «Guardar archivo».
+- Número de versión 0.8.1 visible en la pantalla de carga y Ajustes.
+A probar en el teléfono: todo lo anterior (la parte nativa no se puede probar fuera del teléfono).
+Sigue pendiente:
+- «Zafar» (La Vela Puerca): el Dm se quedaba ~17 s aunque la página trae Am-Dm-G en cada línea → hace falta el archivo de la canción
+  («Guardar archivo») para reproducirlo.
+- Abrir un .cancionero directamente desde WhatsApp (hoy: guardarlo e «Importar»).
+- Segunda fuente automática de letras (la página web cubre el caso a mano).
+- Sincronizar la letra sola con el canto (sección 1) — investigación.
+- Motor de audio propio (Mi de paso, D7 cortos, Gmaj7/Cm7): en pausa por decisión del usuario.

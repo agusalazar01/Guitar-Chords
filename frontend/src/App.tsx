@@ -96,6 +96,7 @@ export default function App() {
   const [optsOpen, setOptsOpen] = useState(false) // «⋯ Opciones»: todo lo que no es acordes, compás y letra
   const [lyricsNote, setLyricsNote] = useState<string | null>(null) // aviso cuando no se encontró la letra
   const [lyricsOpen, setLyricsOpen] = useState(false) // búsqueda de letra (solo letras)
+  const [lyricsWeb, setLyricsWeb] = useState(false) // abrir la búsqueda de letra directo en una página web
   const [chordsOpen, setChordsOpen] = useState(false) // menú «Acordes»
   const [searchKey, setSearchKey] = useState(0) // «+ Nueva» vuelve a crear el buscador (limpio)
   const [markOpen, setMarkOpen] = useState(false) // marcar acordes sobre el video
@@ -349,7 +350,7 @@ export default function App() {
     return cleanTitle(cur?.filename ?? '') || searchHint
   }
   /** Abre el buscador directamente en la búsqueda de letra de esta canción. */
-  function askLyrics() { setLyricsOpen((x) => !x); setChordsOpen(false) }
+  function askLyrics() { setLyricsWeb(false); setLyricsOpen((x) => !x); setChordsOpen(false) }
   async function openSongbook() {
     const q = songbookQuery()
     if (!q) { setPasteOpen(true); return }
@@ -466,8 +467,17 @@ export default function App() {
     setBase(segs); setUndo([]); setAdvanced(true); setStepMode(true); setStepIdx(0); setSeqOpen(false); setChordsOpen(false); setNotice(null)
   }
   async function shareSong(s: Song) {
-    try { await shareFile(encodeSongs([{ ...s, audio: null }], false), safeName(s.filename) + FILE_EXT, `«${s.filename}» de Mi Cancionero. Abrilo en la app: Mi cancionero → Importar.`) }
+    // Se comparte como texto (.txt): WhatsApp, Gmail y demás rechazan un tipo de archivo desconocido («no es posible compartir este archivo»).
+    // El contenido es el mismo y «Importar» lo reconoce por dentro, no por la extensión.
+    try { await shareFile(encodeSongs([{ ...s, audio: null }], false), safeName(s.filename) + FILE_EXT + '.txt', `«${s.filename}» de Mi Cancionero. Abrilo en la app: Mi cancionero → Importar.`, 'text/plain') }
     catch (e) { setNotice(`No se pudo compartir: ${(e as Error).message}`) }
+  }
+  /** Guarda la canción como archivo donde el usuario elija (Descargas, Drive…), sin pasar por otra app. */
+  async function saveSongFile(s: Song) {
+    try {
+      const ok = await saveFile(encodeSongs([{ ...s, audio: null }], false), safeName(s.filename) + FILE_EXT)
+      setNotice(ok ? `Archivo de «${s.filename}» guardado.` : null)
+    } catch (e) { setNotice(`No se pudo guardar el archivo: ${(e as Error).message}`) }
   }
   async function backupAll() {
     setFileBusy('Preparando la copia…')
@@ -556,7 +566,7 @@ export default function App() {
     <div className="flex h-[100dvh] flex-col">
       <Splash />
       <Songbook open={drawer} songs={songs} currentId={song?.id ?? null} onClose={() => setDrawer(false)} onOpen={(x) => openSong(x)} onNew={newSong}
-        onDelete={removeSong} onRename={renameSong} onReorder={reorderSongs} onShare={shareSong} onBackup={backupAll} onImport={importSongs} busy={fileBusy} />
+        onDelete={removeSong} onRename={renameSong} onReorder={reorderSongs} onShare={shareSong} onSaveFile={saveSongFile} onBackup={backupAll} onImport={importSongs} busy={fileBusy} />
       <header className="max-h-[42vh] shrink-0 space-y-2 overflow-y-auto bg-bg px-3 pb-2" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
         <div className="flex items-center justify-between gap-1">
           <div className="flex min-w-0 items-center gap-1">
@@ -656,11 +666,14 @@ export default function App() {
                 <b>{r.trackName}</b> · {r.artistName}{r.duration ? ` · ${Math.floor(r.duration / 60)}:${String(Math.round(r.duration % 60)).padStart(2, '0')}` : ''}{r.syncedLyrics ? '' : ' · sin tiempos'}</button></li>))}
             </ul>
             <div className="mt-2 flex gap-2">
-              <button className={small} onClick={() => { setLyricCands(null); setLyricsOpen(true) }}>Ninguna: buscar otra</button>
+              <button className={small} onClick={() => { setLyricCands(null); setLyricsWeb(false); setLyricsOpen(true) }}>Ninguna: buscar otra</button>
+              <button className={small} onClick={() => { setLyricCands(null); setLyricsWeb(true); setLyricsOpen(true) }}>Buscar en una página</button>
               <button className={small} onClick={() => { setLyricCands(null); if (songRef.current) persist({ lyrics: null }) }}>Sin letra</button>
             </div>
           </section>)}
-        {lyricsNote && !song?.lyrics && !lyricCands && !lyricsOpen && <p className="text-sm text-mute">{lyricsNote} Tocá «Letra» para buscarla o pegarla.</p>}
+        {lyricsNote && !song?.lyrics && !lyricCands && !lyricsOpen && <p className="flex flex-wrap items-center gap-2 text-sm text-mute">{lyricsNote}
+          <button className={small} onClick={() => { setLyricsWeb(true); setLyricsOpen(true); setChordsOpen(false) }}>Buscar la letra en una página</button>
+          <button className={small} onClick={() => { setLyricsWeb(false); setLyricsOpen(true); setChordsOpen(false) }}>Pegar o buscar de nuevo</button></p>}
 
         {(hasMedia || song) && (
           <div className="grid grid-cols-3 gap-1 rounded-2xl bg-panel p-1" role="group" aria-label="Acciones">
@@ -672,7 +685,7 @@ export default function App() {
               <button key={ic} className={`flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-semibold transition active:scale-95 ${on ? 'bg-accent text-accent-fg' : 'text-mute'}`}
                 onClick={fn} aria-expanded={on} aria-label={label}><Icon name={ic} />{label === '⋯ Opciones' ? 'Opciones' : label}</button>))}
           </div>)}
-        {lyricsOpen && <LyricsSearch key={`${searchKey}-${song?.id ?? ''}`} initial={songbookQuery()} onPick={attachLyrics} onPaste={pasteLyrics} onClose={() => setLyricsOpen(false)} />}
+        {lyricsOpen && <LyricsSearch key={`${searchKey}-${song?.id ?? ''}`} initial={songbookQuery()} onPick={attachLyrics} onPaste={pasteLyrics} autoWeb={lyricsWeb} onClose={() => { setLyricsOpen(false); setLyricsWeb(false) }} />}
         {(chordsOpen || (!segments.length && (hasMedia || song) && !lyricsOpen && !seqOpen)) && (
           <section className={`${box} space-y-3`} aria-label="Acordes">
             <h2 className="font-semibold">{segments.length ? 'Acordes' : 'Sin acordes todavía'}</h2>
@@ -773,6 +786,7 @@ export default function App() {
                   <p className="text-xs">Esta canción se analizó con un motor anterior. <button className="underline" onClick={() => song.audio && pickFile(new File([song.audio], song.filename, { type: song.audio.type || 'audio/mpeg' }), song)}>Volver a analizar con el motor nuevo</button> (se conservan la letra y el video; se pierden las correcciones de acordes).</p>)}
                 {source === 'analysis' && song && <p className="text-xs text-mute">«{song.filename}» · {song.method}.{info ? ` ${info}.` : ''}{song.lowConfidence && ' Confianza media baja: revisá los acordes marcados con ≈.'}</p>}
                 {song && <button className={small} onClick={() => void shareSong(song)}><Icon name="share" className="h-4 w-4" /> Compartir esta canción</button>}
+                {song && <button className={small} onClick={() => void saveSongFile(song)}>Guardar archivo de esta canción</button>}
                 {hasMedia && !song && <button className={small} onClick={() => { setBase(DEMO_SEGMENTS); setSource('demo'); songRef.current = null; setSong(null); setUndo([]) }}>Ver secuencia de demostración</button>}
                 <button className={small} onClick={() => setDrawer(true)}>Ver Mi cancionero ({songs.length})</button>
               </div>

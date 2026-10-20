@@ -3,7 +3,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core'
 
 interface WebPicker {
   pickYouTube(o: { query: string }): Promise<{ id?: string; cancelled?: boolean }>
-  importPage(o: { url: string; title?: string }): Promise<{ text?: string; url?: string; title?: string; cancelled?: boolean }>
+  importPage(o: { url: string; title?: string; button?: string; mode?: 'chords' | 'lyrics' }): Promise<{ text?: string; url?: string; title?: string; cancelled?: boolean }>
   createFile(o: { name: string; mime: string }): Promise<{ token?: string; cancelled?: boolean }>
   writeChunk(o: { token: string; data: string }): Promise<void>
   closeFile(o: { token: string }): Promise<void>
@@ -19,12 +19,24 @@ export async function pickYouTube(query: string): Promise<string | null> {
   return r.id ?? null
 }
 
-/** Buscador web con la canción: solo «canción artista acordes» (con «site:… OR …» Google no encontraba nada). */
-export const songbookSearchUrl = (q: string) => `https://www.google.com/search?q=${encodeURIComponent(`${q} acordes`)}`
+/** Buscador web con la canción: «canción artista acordes lacuerda» (LaCuerda sale primero; Cifra Club sigue apareciendo más abajo).
+ *  Con «site:… OR …» Google no encontraba nada, por eso se usa solo la palabra. */
+export const songbookSearchUrl = (q: string) => `https://www.google.com/search?q=${encodeURIComponent(`${q} acordes lacuerda`)}`
 
 /** Abre el cancionero dentro de la app; el usuario elige la canción y toca «Importar acordes». Devuelve el texto o null. */
 export async function importFromSongbook(q: string): Promise<string | null> {
   const r = await plugin.importPage({ url: songbookSearchUrl(q), title: 'Elegí la canción y tocá «Importar acordes»' })
+  if (!r.text) return null
+  try { const v = JSON.parse(r.text); return typeof v === 'string' ? v : null } catch { return r.text }
+}
+
+/** Búsqueda web de la letra: «canción artista letra». */
+export const lyricsSearchUrl = (q: string) => `https://www.google.com/search?q=${encodeURIComponent(`${q} letra`)}`
+
+/** APK: abre una búsqueda de la letra dentro de la app; el usuario elige la página (y si quiere selecciona la letra) y toca
+ *  «Importar letra». Devuelve el texto o null si cerró. */
+export async function importLyricsFromWeb(q: string): Promise<string | null> {
+  const r = await plugin.importPage({ url: lyricsSearchUrl(q), title: 'Elegí la página de la letra y tocá «Importar letra»', button: 'Importar letra', mode: 'lyrics' })
   if (!r.text) return null
   try { const v = JSON.parse(r.text); return typeof v === 'string' ? v : null } catch { return r.text }
 }
@@ -55,7 +67,7 @@ export async function saveFile(blob: Blob, name: string, onProgress?: (p: number
 }
 
 /** Comparte un archivo chico (una canción) con otras apps; en la web lo descarga. */
-export async function shareFile(blob: Blob, name: string, text: string): Promise<void> {
+export async function shareFile(blob: Blob, name: string, text: string, mime = 'application/octet-stream'): Promise<void> {
   if (!hasWebPicker()) { download(blob, name); return }
-  await plugin.shareFile({ name, mime: 'application/octet-stream', data: await toBase64(blob), text })
+  await plugin.shareFile({ name, mime, data: await toBase64(blob), text })
 }

@@ -214,9 +214,19 @@ export function alignCifrado(cif: CifradoLine[], lrc: LyricLine[] | null): Chord
   for (const e of ev) {
     const p = out[out.length - 1]
     if (p && p.chord === e.chord) continue
-    if (p && e.l - p.l < 0.15) { out[out.length - 1] = { l: p.l, chord: e.chord }; continue }
-    out.push(e)
+    out.push({ ...e })
   }
+  return spreadEvents(out)
+}
+
+/** Separación mínima entre dos acordes seguidos (s): ningún acorde se descarta por caer pegado a otro (p. ej. el último de una línea
+ *  y el primero de la siguiente); el anterior se corre hacia atrás, que es donde el cifrado lo pone «un poco antes». */
+export const MIN_CHORD_GAP = 0.5
+export function spreadEvents(ev: ChordEvent[]): ChordEvent[] {
+  const out = ev.map((e) => ({ ...e }))
+  for (let i = out.length - 2; i >= 0; i--) if (out[i + 1].l - out[i].l < MIN_CHORD_GAP) out[i].l = out[i + 1].l - MIN_CHORD_GAP
+  if (out.length && out[0].l < 0) out[0].l = 0
+  for (let i = 1; i < out.length; i++) if (out[i].l - out[i - 1].l < MIN_CHORD_GAP) out[i].l = out[i - 1].l + MIN_CHORD_GAP
   return out
 }
 

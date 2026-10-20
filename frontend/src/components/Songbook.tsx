@@ -3,11 +3,11 @@ import type { Song } from '../lib/songs.ts'
 import { Icon, Mate } from './Art.tsx'
 
 /** «Mi cancionero»: panel lateral con todas las canciones guardadas. Se reordena arrastrando la manija ⠿ o con ↑ ↓. */
-export default function Songbook({ open, songs, currentId, onClose, onOpen, onNew, onDelete, onRename, onReorder, onShare, onBackup, onImport, busy }: {
+export default function Songbook({ open, songs, currentId, onClose, onOpen, onNew, onDelete, onRename, onReorder, onShare, onSaveFile, onBackup, onImport, busy }: {
   open: boolean; songs: Song[]; currentId: string | null
   onClose: () => void; onOpen: (s: Song) => void; onNew: () => void; onDelete: (s: Song) => void
   onRename: (s: Song, name: string) => void; onReorder: (list: Song[]) => void
-  onShare: (s: Song) => void; onBackup: () => void; onImport: (f: File) => void; busy: string | null
+  onShare: (s: Song) => void; onSaveFile: (s: Song) => void; onBackup: () => void; onImport: (f: File) => void; busy: string | null
 }) {
   const [filter, setFilter] = useState('')
   const [editing, setEditing] = useState<string | null>(null)
@@ -97,6 +97,7 @@ export default function Songbook({ open, songs, currentId, onClose, onOpen, onNe
                     {!q && <button className="btn min-h-9 px-2 text-xs" onClick={() => move(i, -1)} disabled={i === 0}>↑ Subir</button>}
                     {!q && <button className="btn min-h-9 px-2 text-xs" onClick={() => move(i, 1)} disabled={i === list.length - 1}>↓ Bajar</button>}
                     <button className="btn min-h-9 px-2 text-xs" onClick={() => { onShare(s); setMenu(null) }} aria-label={`Compartir ${s.filename}`}><Icon name="share" className="h-4 w-4" /> Compartir</button>
+                    <button className="btn min-h-9 px-2 text-xs" onClick={() => { onSaveFile(s); setMenu(null) }} aria-label={`Guardar archivo de ${s.filename}`}>Guardar archivo</button>
                     <button className="btn min-h-9 px-2 text-xs" onClick={() => { setEditing(s.id); setMenu(null) }} aria-label={`Renombrar ${s.filename}`}>✎ Renombrar</button>
                     <button className="btn min-h-9 px-2 text-xs text-red-400" onClick={() => { onDelete(s); setMenu(null) }} aria-label={`Borrar ${s.filename}`}>Borrar</button>
                   </div>)}

@@ -8,7 +8,7 @@ export interface Song {
   id: string; filename: string; createdAt: number; duration: number; method: string; lowConfidence: boolean
   original: Segment[]; corrections: Segment[] | null; settings: SongSettings; audio: Blob | null // null = acordes marcados a mano sobre un video (sin audio)
   kind?: 'analysis' | 'manual' | 'cifrado' // cifrado = acordes de un cancionero ubicados con la letra
-  cifrado?: { events: ChordEvent[]; lines?: CifradoLine[] } // acordes del cifrado en el tiempo de la letra (se recalculan al ajustar la letra)
+  cifrado?: { events: ChordEvent[]; lines?: CifradoLine[]; capo?: number; key?: string } // acordes del cifrado en el tiempo de la letra (se recalculan al ajustar la letra)
   order?: number // posición en «Mi cancionero» (menor = más arriba)
   lyrics?: SongLyrics | null; lyricsOffset?: number // letra (LRCLIB o propia) y su corrimiento en segundos
   lyricsAnchors?: LyricAnchor[] // puntos «esta línea empieza acá» marcados por el usuario (ajustan intro y versiones más lentas o rápidas)

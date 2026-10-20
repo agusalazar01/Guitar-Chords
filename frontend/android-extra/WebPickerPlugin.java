@@ -61,10 +61,13 @@ public class WebPickerPlugin extends Plugin {
       "lyrics".equals(call.getString("mode", "chords")) ? LYRICS_JS : CHORDS_JS);
   }
 
-  /** Cifrado: el bloque <pre> más largo (LaCuerda, Cifra Club) o, si no hay, el texto de la página. */
+  /** Cifrado: TODOS los bloques <pre> en orden (LaCuerda a veces parte la canción en varios) o, si no hay, el texto de la página.
+   *  Delante van las líneas de la página con el tono y la cejilla («Tono: G», «Capo en 2»), que a veces están fuera del <pre>. */
   private static final String CHORDS_JS =
-    "(function(){var ps=[].slice.call(document.querySelectorAll('pre'));ps.sort(function(a,b){return b.innerText.length-a.innerText.length});"
-      + "var p=ps[0];return (p&&p.innerText.length>150)?p.innerText:document.body.innerText})()";
+    "(function(){var ps=[].slice.call(document.querySelectorAll('pre')).filter(function(p){return p.innerText.trim().length>0});"
+      + "var all=ps.map(function(p){return p.innerText}).join('\\n\\n');"
+      + "var meta=(document.body.innerText||'').split('\\n').filter(function(l){return /^\\s*(tono|tonalidad|tom|capo|cejilla|capotraste)\\b/i.test(l)}).slice(0,4).join('\\n');"
+      + "return all.length>150?(meta?meta+'\\n\\n':'')+all:document.body.innerText})()";
   /** Letra: lo que el usuario seleccionó, o el bloque con más líneas cortas y pocos enlaces (la letra), o el texto de la página. */
   private static final String LYRICS_JS =
     "(function(){var sel=String(window.getSelection?window.getSelection():'');if(sel.trim().length>40)return sel;"
@@ -236,13 +239,30 @@ public class WebPickerPlugin extends Plugin {
   public void shareFile(PluginCall call) {
     String name = call.getString("name", "cancion.cancionero").replaceAll("[^A-Za-z0-9._ -]", "_");
     try {
-      File dir = new File(getContext().getCacheDir(), "share");
-      if (!dir.exists() && !dir.mkdirs()) { call.reject("No se pudo preparar el archivo."); return; }
-      File f = new File(dir, name);
-      try (FileOutputStream out = new FileOutputStream(f)) { out.write(Base64.decode(call.getString("data", ""), Base64.DEFAULT)); }
-      Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".mcfiles", f);
+      String mime = call.getString("mime", "application/octet-stream");
+      byte[] bytes = Base64.decode(call.getString("data", ""), Base64.DEFAULT);
+      Uri uri = null;
+      // Android 10+: el archivo se guarda en Descargas/Mi Cancionero y se comparte desde ahí. Así la otra app (WhatsApp, Gmail…)
+      // lo lee del sistema y no de esta app, que al pasar a segundo plano puede quedar congelada (la otra app quedaba «cargando»).
+      if (android.os.Build.VERSION.SDK_INT >= 29) {
+        try {
+          android.content.ContentValues v = new android.content.ContentValues();
+          v.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name);
+          v.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime);
+          v.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/Mi Cancionero");
+          uri = getContext().getContentResolver().insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+          if (uri != null) try (OutputStream o = getContext().getContentResolver().openOutputStream(uri, "w")) { o.write(bytes); }
+        } catch (Exception ignored) { uri = null; }
+      }
+      if (uri == null) { // Android 9 o anterior, o si Descargas falló: archivo propio de la app
+        File dir = new File(getContext().getCacheDir(), "share");
+        if (!dir.exists() && !dir.mkdirs()) { call.reject("No se pudo preparar el archivo."); return; }
+        File f = new File(dir, name);
+        try (FileOutputStream out = new FileOutputStream(f)) { out.write(bytes); }
+        uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".mcfiles", f);
+      }
       Intent send = new Intent(Intent.ACTION_SEND);
-      send.setType(call.getString("mime", "application/octet-stream"));
+      send.setType(mime);
       send.putExtra(Intent.EXTRA_STREAM, uri);
       send.putExtra(Intent.EXTRA_TEXT, call.getString("text", ""));
       send.setClipData(android.content.ClipData.newRawUri(name, uri)); // sin esto, algunas apps destino no pueden leer el archivo

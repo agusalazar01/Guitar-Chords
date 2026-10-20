@@ -104,6 +104,16 @@ export function lyricTime(t: number, anchors: LyricAnchor[] = [], offset = 0): n
   for (let i = 1; i < a.length; i++) if (x <= a[i].t) { const p = a[i - 1], q = a[i]; return p.l + ((x - p.t) * (q.l - p.l)) / (q.t - p.t) }
   const z = a[a.length - 1]; return z.l + (x - z.t)
 }
+/** «Ajustar la letra a esta grabación»: la letra es de otra grabación (dura distinto). Se estira o achica en proporción a la
+ *  duración, con dos puntos de ajuste (primera y última línea cantada). Después se afina con «Esta línea empieza ahora». */
+export function fitAnchors(lines: LyricLine[], lyricsDur: number, mediaDur: number): LyricAnchor[] {
+  const sung = lines.filter((l) => l.text.trim())
+  if (sung.length < 2 || lyricsDur <= 0 || mediaDur <= 0) return []
+  const r = mediaDur / lyricsDur
+  const a = sung[0].t, b = sung[sung.length - 1].t
+  const r2 = (x: number) => Math.round(x * 100) / 100
+  return [{ l: a, t: r2(a * r) }, { l: b, t: r2(b * r) }]
+}
 /** Inverso de lyricTime: en qué segundo del audio suena el momento l de la letra. */
 export function audioTime(l: number, anchors: LyricAnchor[] = [], offset = 0): number {
   if (!anchors.length) return l + offset

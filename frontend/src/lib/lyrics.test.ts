@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mainArtist, songbookText, activeLine, cleanTitle, matchScore, parseLrc, pickAuto, rankResults } from './lyrics.ts'
+import { mainArtist, songbookText, activeLine, cleanTitle, fitAnchors, matchScore, parseLrc, pickAuto, rankResults } from './lyrics.ts'
 import type { LyricResult } from './lyrics.ts'
 
 test('parseLrc: tiempos, varias marcas por línea, etiquetas ignoradas y orden', () => {
@@ -81,4 +81,12 @@ test('texto limpio para buscar el cifrado (canción + artista principal)', () =>
   assert.equal(songbookText(v.title, v.artist), 'Nada Fue Un Error Julieta Venegas')
   const w = parseVideoTitle('Coti (Feat. Paulina Rubio & Julieta Venegas) Nada Fué Un Error')
   assert.equal(songbookText(w.title, w.artist), 'Coti Nada Fué Un Error')
+})
+
+test('fitAnchors: estira la letra de otra grabación a la duración del video', () => {
+  const lines = [{ t: 10, text: 'uno' }, { t: 20, text: '' }, { t: 100, text: 'fin' }]
+  const a = fitAnchors(lines, 200, 220)
+  assert.deepEqual(a, [{ l: 10, t: 11 }, { l: 100, t: 110 }])
+  assert.equal(Math.round(audioTime(55, a) * 10) / 10, 60.5)
+  assert.deepEqual(fitAnchors(lines, 0, 220), [])
 })

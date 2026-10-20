@@ -8,7 +8,7 @@ const SHARP = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 const LATIN: Record<string, string> = { do: 'C', re: 'D', mi: 'E', fa: 'F', sol: 'G', la: 'A', si: 'B' }
 const FLAT: Record<string, string> = { Db: 'C#', Eb: 'D#', Gb: 'F#', Ab: 'G#', Bb: 'A#', Cb: 'B', Fb: 'E' }
 const ROOT = '(?:[A-G]|Do|Re|Mi|Fa|Sol|La|Si)[#b]?'
-const QUAL = '(?:maj7|maj9|M7|7M|m7b5|m7|m9|m6|m|min|dim7|dim|°|aug|\\+|sus2|sus4|sus|add9|add2|6|7|9|11|13|5)*'
+const QUAL = '(?:maj7|maj9|M7|7M|m7b5|m7|m9|m6|m|min|dim7|dim|°|º|aug|\\+|sus2|sus4|sus|add9|add2|6|7|9|11|13|5|4)*'
 const CHORD_RE = new RegExp(`^${ROOT}${QUAL}(?:\\/${ROOT})?$`)
 
 function rootName(r: string): string | null {
@@ -22,7 +22,15 @@ function rootName(r: string): string | null {
 
 /** Normaliza un acorde de cancionero al formato de la app (raíz con #, calidades conocidas). null si no es un acorde. */
 export function normalizeChord(tok: string): string | null {
-  const t = tok.replace(/[()[\]*]/g, '')
+  // «A)RE», «B)mim»: marca de sección pegada al acorde. «Am.» o «G,»: algunos cancioneros ponen punto después del acorde.
+  let t = tok.replace(/^[A-Za-z0-9]\)(?=\S)/, '').replace(/[()[\]*]/g, '').replace(/[.,;:]+$/, '')
+  // Notación latina en mayúsculas o minúsculas («RE», «SOL5», «MIm», «mim»). En minúsculas y sin nada más («la», «mi», «si»)
+  // es una palabra de la letra, no un acorde.
+  const lat = /^(do|re|mi|fa|sol|la|si)(.*)$/i.exec(t)
+  if (lat) {
+    if (lat[1] === lat[1].toLowerCase() && !lat[2]) return null
+    t = lat[1][0].toUpperCase() + lat[1].slice(1).toLowerCase() + lat[2]
+  }
   if (!CHORD_RE.test(t)) return null
   const m = new RegExp(`^(${ROOT})(${QUAL})(?:\\/(${ROOT}))?$`).exec(t)
   if (!m) return null
@@ -31,11 +39,11 @@ export function normalizeChord(tok: string): string | null {
   let qual = ''
   if (/^(m7b5)/.test(q)) qual = 'm7'
   else if (/^(maj7|maj9|M7|7M)/.test(q)) qual = 'maj7'
-  else if (/^(dim|°)/.test(q)) qual = 'dim'
+  else if (/^(dim|°|º)/.test(q)) qual = 'dim'
   else if (/^(aug|\+)/.test(q)) qual = 'aug'
   else if (/^(m|min)/.test(q)) qual = /^(m7|m9|min7)/.test(q) ? 'm7' : 'm'
   else if (/^sus2/.test(q)) qual = 'sus2'
-  else if (/^sus/.test(q)) qual = 'sus4'
+  else if (/^(sus|4)/.test(q)) qual = 'sus4'
   else if (/^(add9|add2)/.test(q)) qual = 'add9'
   else if (/^6/.test(q)) qual = '6'
   else if (/^(7|9|11|13)/.test(q)) qual = '7'
@@ -60,9 +68,74 @@ function chordTokens(line: string): { pos: number; chord: string }[] | null {
   return out.length && out.length >= 2 * other ? out : null
 }
 
+/** Línea de tablatura («E|---0---3--|»): no es letra ni acordes; se ignora. */
+export const isTabLine = (l: string) => /^\s*(?:[EBGDAe]|[Mm][Ii]|[Ss][Ii]|[Ss][Oo][Ll]|[Rr][Ee]|[Ll][Aa])\s*[|:]?[-|0-9hpbrsx/\\~^().\s]{6,}$/.test(l) && /-{3,}/.test(l)
+
+/** Datos de la página: «Tono: G», «Tonalidad: Re menor», «Tom: Am» (Cifra Club) y «Capo en 2», «Cejilla en el 3er traste»,
+ *  «Capotraste na 2ª casa». */
+const META_KEY = /^\s*(?:tono|tonalidad|tom|key)\s*[:=]?\s*(\S+)(?:\s+(menor|mayor|minor|major))?/i
+const META_CAPO = /^\s*(?:capo|cejilla|capotraste)\b\D{0,25}?(\d{1,2})/i
+const metaKey = (l: string) => { const k = META_KEY.exec(l); if (!k) return null; const t = k[1].replace(/[.,;]$/, ''); return normalizeChord(t[0].toUpperCase() + t.slice(1)) }
+const isMetaLine = (l: string) => !!metaKey(l) || META_CAPO.test(l) || /^\s*(?:sin capo|sin cejilla)\b/i.test(l)
+export function cifradoMeta(text: string): { key?: string; capo?: number } {
+  const out: { key?: string; capo?: number } = {}
+  for (const l of text.split(/\r?\n/).slice(0, 40)) {
+    const c0 = !out.key ? metaKey(l) : null
+    if (c0) out.key = /^(menor|minor)$/i.test(META_KEY.exec(l)?.[2] ?? '') && !c0.includes('m') ? c0 + 'm' : c0
+    const c = META_CAPO.exec(l)
+    if (c && out.capo === undefined) { const n = Number(c[1]); if (n >= 1 && n <= 12) out.capo = n }
+  }
+  return out
+}
+
+/** Letra sin tiempos sacada del cifrado (para cuando LRCLIB no la tiene): sin acordes, títulos ni datos de la página, y
+ *  uniendo las líneas que la página cortó por el ancho del celular. */
+export function cifradoLyrics(lines: CifradoLine[]): string {
+  const txt = lines.map((l) => l.text.replace(/\s+$/, '').replace(/^\s+/, '')).filter((t) => t && !isHeading(t) && !isMetaLine(t))
+  const max = Math.max(1, ...txt.map((t) => t.length))
+  const out: string[] = []
+  for (const t of txt) {
+    const prev = out[out.length - 1]
+    if (prev && prev.length >= 0.75 * max && !/[.,;:!?…)]$/.test(prev) && /^[a-záéíóúñü]/.test(t) && t.length < 0.5 * max) out[out.length - 1] = `${prev} ${t}`
+    else out.push(t)
+  }
+  return out.join('\n')
+}
+
+/** Letra con tiempos sacada de los ACORDES (cuando no hay letra sincronizada de LRCLIB): cada línea del cifrado aparece cuando
+ *  suena el primer acorde que tiene encima; las líneas sin acordes se reparten entre sus vecinas. starts: inicio de cada cambio
+ *  de acorde, en el mismo orden que los acordes del cifrado. */
+export function lyricsFromChords(lines: CifradoLine[], starts: number[]): LyricLine[] {
+  const out: { t: number; text: string }[] = []
+  let k = 0, prev = NaN
+  for (const l of lines) {
+    const text = l.text.trim()
+    let t = NaN
+    if (l.chords.length && k < starts.length) {
+      const c = starts[k]
+      const len = Math.max(1, l.text.trimEnd().length)
+      // si el primer acorde cae a mitad de la línea, el canto empezó un poco antes
+      t = l.chords[0].pos / len > 0.3 && Number.isFinite(prev) ? prev + (c - prev) * 0.5 : Math.max(0, c - 0.2)
+      prev = starts[Math.min(starts.length - 1, k + l.chords.length - 1)]
+      k += l.chords.length
+    }
+    if (!text || isHeading(text) || isMetaLine(text)) continue
+    out.push({ t, text })
+  }
+  // líneas sin acordes: repartidas entre la anterior y la siguiente con tiempo; al final, 3 s cada una
+  for (let i = 0; i < out.length; i++) if (!Number.isFinite(out[i].t)) {
+    let a = i - 1; while (a >= 0 && !Number.isFinite(out[a].t)) a--
+    let b = i + 1; while (b < out.length && !Number.isFinite(out[b].t)) b++
+    const ta = a >= 0 ? out[a].t : 0
+    out[i].t = b < out.length ? ta + ((i - a) / (b - a)) * (out[b].t - ta) : ta + (i - a) * 3
+  }
+  for (let i = 1; i < out.length; i++) if (out[i].t < out[i - 1].t) out[i].t = out[i - 1].t
+  return out
+}
+
 /** Lee un cifrado: cada línea de acordes se une a la línea de letra que tiene debajo; si no hay letra, queda como línea instrumental. */
 export function parseCifrado(text: string): CifradoLine[] {
-  const lines = text.replace(/\t/g, '    ').split(/\r?\n/)
+  const lines = text.replace(/\t/g, '    ').split(/\r?\n/).filter((l) => !isTabLine(l) && !isMetaLine(l))
   const out: CifradoLine[] = []
   for (let i = 0; i < lines.length; i++) {
     const ch = chordTokens(lines[i])
@@ -73,6 +146,22 @@ export function parseCifrado(text: string): CifradoLine[] {
     } else if (lines[i].trim()) out.push({ text: lines[i], chords: [] })
   }
   return out
+}
+
+/** Vuelve a armar el texto de un cifrado ya leído (acordes arriba de su línea), para leerlo de nuevo con reglas mejoradas. */
+export function cifradoText(lines: CifradoLine[]): string {
+  return lines.map((l) => {
+    if (!l.chords.length) return l.text
+    let row = ''
+    for (const c of l.chords) { if (row.length && row.length >= c.pos) row += ' '; row = row.padEnd(c.pos, ' ') + c.chord }
+    return l.text ? `${row}\n${l.text}` : row
+  }).join('\n')
+}
+const countChords = (lines: CifradoLine[]) => lines.reduce((a, l) => a + l.chords.length, 0)
+/** Canciones guardadas con una versión anterior: si al leer de nuevo su cifrado aparecen más acordes, devuelve el cifrado nuevo. */
+export function upgradeCifrado(lines: CifradoLine[]): CifradoLine[] | null {
+  const again = parseCifrado(cifradoText(lines))
+  return countChords(again) > countChords(lines) ? again : null
 }
 
 const words = (s: string) => norm(s).split(' ').filter((w) => w.length > 1)
@@ -144,7 +233,11 @@ function alignWords(A: CWord[], B: LWord[]): Int32Array {
     if (d >= u && d >= l) { S[i * W + j] = d; T[i * W + j] = 0 } else if (u >= l) { S[i * W + j] = u; T[i * W + j] = 1 } else { S[i * W + j] = l; T[i * W + j] = 2 }
   }
   const map = new Int32Array(n).fill(-1)
-  let i = n, j = m
+  // La letra que sobra al final no cuesta: así una estrofa que se repite más adelante se une a su PRIMERA aparición
+  // (antes se unía a la última y la primera quedaba casi sin acordes). Las repeticiones se completan después.
+  let jEnd = m
+  for (let j = 0; j <= m; j++) if (S[n * W + j] > S[n * W + jEnd] || (S[n * W + j] === S[n * W + jEnd] && j < jEnd)) jEnd = j
+  let i = n, j = jEnd
   while (i > 0 && j > 0) {
     const t = T[i * W + j]
     if (t === 0) { if (near(A[i - 1].w, B[j - 1].w) > 0) map[i - 1] = j - 1; i--; j-- } else if (t === 1) i--; else j--
@@ -209,6 +302,7 @@ export function alignCifrado(cif: CifradoLine[], lrc: LyricLine[] | null): Chord
     const line = cif[gb], len = Math.max(line.text.trimEnd().length, ...line.chords.map((c) => c.pos + 1), 1)
     for (const c of line.chords) ev.push({ l: t0 + (Math.min(c.pos, len) / len) * span, chord: c.chord })
   })
+  ev.push(...fillSections(ev, sung, lrc ?? []))
   ev.sort((a, b) => a.l - b.l)
   const out: ChordEvent[] = []
   for (const e of ev) {
@@ -217,6 +311,68 @@ export function alignCifrado(cif: CifradoLine[], lrc: LyricLine[] | null): Chord
     out.push({ ...e })
   }
   return spreadEvents(out)
+}
+
+/** Estrofas de la letra sincronizada: se cortan en las líneas vacías de LRCLIB o en un silencio largo entre líneas. */
+export function lyricSections(sung: LyricLine[], raw: LyricLine[]): number[][] {
+  if (!sung.length) return []
+  const gaps = sung.slice(1).map((l, j) => l.t - sung[j].t).sort((a, b) => a - b)
+  const med = gaps.length ? gaps[gaps.length >> 1] : 4
+  const out: number[][] = [[0]]
+  for (let j = 1; j < sung.length; j++) {
+    const a = sung[j - 1].t, b = sung[j].t
+    const blank = raw.some((l) => !l.text.trim() && l.t > a && l.t < b)
+    if (blank || b - a > Math.max(4, 1.8 * med)) out.push([j]); else out[out.length - 1].push(j)
+  }
+  // Sin separaciones (todas las líneas parejas): una «estrofa» de más de 8 líneas se parte en cuartetas (o de 5 o 6 si encaja justo).
+  return out.flatMap((sec) => {
+    if (sec.length <= 8) return [sec]
+    const k = sec.length % 4 === 0 ? 4 : sec.length % 6 === 0 ? 6 : sec.length % 5 === 0 ? 5 : 4
+    const parts: number[][] = []
+    for (let i = 0; i < sec.length; i += k) parts.push(sec.slice(i, i + k))
+    return parts
+  })
+}
+
+/** Los cancioneros suelen escribir los acordes solo la primera vez de cada estrofa o estribillo. Si una estrofa de la letra quedó
+ *  casi sin cambios de acorde, se copian los de la estrofa anterior más parecida (por el texto y por la cantidad de líneas),
+ *  línea por línea y en la misma posición relativa dentro de cada línea. Las líneas que ya tienen acordes no se tocan. */
+function fillSections(ev: ChordEvent[], sung: LyricLine[], raw: LyricLine[]): ChordEvent[] {
+  const span = (j: number) => Math.min((j + 1 < sung.length ? sung[j + 1].t : sung[j].t + 4) - sung[j].t, 8)
+  const lineEv = sung.map((l, j) => {
+    const end = j + 1 < sung.length ? sung[j + 1].t : l.t + 4
+    return ev.filter((e) => e.l >= l.t - 0.25 && e.l < end - 0.25).map((e) => ({ f: (e.l - l.t) / span(j), chord: e.chord }))
+  })
+  const secs = lyricSections(sung, raw)
+  const chorded = (sec: number[]) => sec.filter((j) => lineEv[j].length).length / sec.length
+  const added: ChordEvent[] = []
+  secs.forEach((T, ti) => {
+    if (chorded(T) >= 0.5) return
+    let best: number[] | null = null, bestScore = 0.5
+    for (let pi = 0; pi < ti; pi++) {
+      const P = secs[pi]
+      if (chorded(P) < 0.6) continue
+      const sim = T.filter((j) => P.some((k) => similarity(sung[k].text, sung[j].text) >= 0.6)).length
+      const len = T.length === P.length ? 1 : T.length % P.length === 0 || P.length % T.length === 0 ? 0.5 : 0
+      const score = 2 * sim + len
+      if (score > bestScore) { bestScore = score; best = P }
+    }
+    if (!best) return
+    T.forEach((j, i) => {
+      if (lineEv[j].length) return
+      const src = best![i % best!.length]
+      for (const e of lineEv[src]) added.push({ l: sung[j].t + Math.max(-0.25, e.f) * span(j), chord: e.chord })
+    })
+  })
+  return added
+}
+
+/** Partes de la letra que quedaron sin ningún acorde (la página no las trae): primera línea de cada una, para avisar. */
+export function uncoveredParts(ev: ChordEvent[], lrc: LyricLine[] | null): string[] {
+  const raw = lrc ?? [], sung = raw.filter((l) => l.text.trim())
+  if (!sung.length || !ev.length) return []
+  const has = (j: number) => { const end = j + 1 < sung.length ? sung[j + 1].t : sung[j].t + 4; return ev.some((e) => e.l >= sung[j].t - 0.25 && e.l < end - 0.25) }
+  return lyricSections(sung, raw).filter((sec) => sec.length >= 2 && !sec.some(has)).map((sec) => sung[sec[0]].text.trim())
 }
 
 /** Separación mínima entre dos acordes seguidos (s): ningún acorde se descarta por caer pegado a otro (p. ej. el último de una línea

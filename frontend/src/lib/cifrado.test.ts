@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { alignCifrado, cifradoSegments, MIN_CHORD_GAP, normalizeChord, parseCifrado } from './cifrado.ts'
+import { alignCifrado, cifradoLyrics, cifradoMeta, cifradoSegments, lyricsFromChords, MIN_CHORD_GAP, normalizeChord, parseCifrado, uncoveredParts, upgradeCifrado } from './cifrado.ts'
 import { addAnchor } from './lyrics.ts'
 
 test('normalizeChord: inglés, latino, bemoles y calidades', () => {
@@ -101,4 +101,62 @@ test('alignCifrado: ningún acorde se pierde aunque el último de una línea cai
   const ev = alignCifrado(parseCifrado(txt), lrc)
   assert.deepEqual(ev.map((e) => e.chord), ['Am', 'Dm', 'G', 'Am', 'Dm', 'G', 'Am', 'Dm', 'G'])
   for (let i = 1; i < ev.length; i++) assert.ok(ev[i].l - ev[i - 1].l >= MIN_CHORD_GAP - 1e-9, `separación en ${i}`)
+})
+
+test('parseCifrado: acordes con punto («Am.») y tablaturas ignoradas', () => {
+  const txt = ['[Tab - Intro]', '    Am      Dm', 'E|-----0-----0-----0---|', 'B|-----1-----1-----1---|', 'Am.                  Dm.', 'Y no puedo evitar, el humo que entra', '            G', ' hoy'].join('\n')
+  const cif = parseCifrado(txt)
+  assert.deepEqual(cif.flatMap((l) => l.chords.map((c) => c.chord)), ['Am', 'Dm', 'Am', 'Dm', 'G'])
+  assert.ok(!cif.some((l) => l.text.includes('|---')), 'la tablatura no queda como letra')
+})
+
+test('alignCifrado: una estrofa que se repite más adelante se une a su primera aparición', () => {
+  const verse = ['Soy de la ciudad con todo lo que ves', 'con su ruido, con su gente, consume vejez']
+  const txt = verse.flatMap((t) => ['Am            Dm        G', t]).join('\n')
+  const lrc = [...verse, 'Me voy volando por ahi', 'y estoy convencido de ir', ...verse].map((text, i) => ({ t: 20 + i * 5, text }))
+  const ev = alignCifrado(parseCifrado(txt), lrc)
+  assert.equal(ev[0].chord, 'Am')
+  assert.ok(ev[0].l < 21 && ev.filter((e) => e.l < 30).length >= 6, `primera estrofa con sus acordes: ${ev.map((e) => e.l.toFixed(1) + e.chord).join(' ')}`)
+})
+
+test('upgradeCifrado: una canción guardada con acordes «Am.» leídos como letra se recupera', () => {
+  const viejo = [{ text: 'Am.                  Dm.', chords: [] }, { text: 'Y no puedo evitar, el humo', chords: [] }]
+  const nuevo = upgradeCifrado(viejo)
+  assert.ok(nuevo)
+  assert.deepEqual(nuevo!.flatMap((l) => l.chords.map((c) => c.chord)), ['Am', 'Dm'])
+  assert.equal(upgradeCifrado(nuevo!), null)
+})
+
+test('cifradoMeta: tono y cejilla de la página; esas líneas no se leen como acordes', () => {
+  const txt = 'Tono: Re menor\nCapo en el 2º traste\n\nAm        Dm\nSoy de la ciudad'
+  assert.deepEqual(cifradoMeta(txt), { key: 'Dm', capo: 2 })
+  assert.deepEqual(cifradoMeta('Tom: G\nCapotraste na 3ª casa'), { key: 'G', capo: 3 })
+  assert.deepEqual(parseCifrado(txt).flatMap((l) => l.chords.map((c) => c.chord)), ['A', 'D'].map((x) => x + 'm'))
+  assert.deepEqual(cifradoMeta('Key to my heart\nAm Dm'), {})
+})
+
+test('Notación latina en mayúsculas (LaCuerda): «RE», «SOL5», «LA4», «MIm», «Solº», marcas «A)» y tablatura con cuerdas latinas', () => {
+  const txt = ["   MI |-----2---2------3---|", "  sol|---2---2-----4----4-|", '   A)RE', '   Niño, mi niño,', '       SOL5       LA4', '   vendrás en primavera,', '          RE, Solº, RE, Solº', '   te traeré', '   B)mim              LA7', '   Y aunque nazcas pobre,'].join('\n')
+  assert.deepEqual(parseCifrado(txt).flatMap((l) => l.chords.map((c) => c.chord)), ['D', 'G', 'Asus4', 'D', 'Gdim', 'D', 'Gdim', 'Em', 'A7'])
+  assert.equal(normalizeChord('la'), null) // palabra de la letra
+})
+
+test('cifradoLyrics: letra sin acordes, uniendo las líneas cortadas por el ancho del celular', () => {
+  const lines = parseCifrado(['Tono: A', '                   E7', '   Yo se que en el pago me tienen', '         A', 'idea', '  porque a los que mandan no les', '[Estribillo]', 'Me voy, volando.'].join('\n'))
+  assert.equal(cifradoLyrics(lines), 'Yo se que en el pago me tienen idea\nporque a los que mandan no les\nMe voy, volando.')
+})
+
+test('lyricsFromChords: cada línea aparece cuando suena su primer acorde; las líneas sin acordes se reparten', () => {
+  const lines = parseCifrado(['Tono: Am', 'Am            Dm', 'Soy de la ciudad', 'con todo lo que ves', 'G         Am', 'con su ruido'].join('\n'))
+  const ly = lyricsFromChords(lines, [10, 12, 18, 20])
+  assert.deepEqual(ly.map((l) => l.text), ['Soy de la ciudad', 'con todo lo que ves', 'con su ruido'])
+  assert.equal(ly[0].t, 9.8)
+  assert.ok(ly[1].t > ly[0].t && ly[1].t < ly[2].t)
+  assert.equal(ly[2].t, 17.8)
+})
+
+test('uncoveredParts: avisa las estrofas de la letra que quedaron sin ningún acorde', () => {
+  const lrc = [{ t: 10, text: 'uno' }, { t: 13, text: 'dos' }, { t: 16, text: '' }, { t: 25, text: 'Tengo algo mal pensado' }, { t: 28, text: 'otra' }]
+  assert.deepEqual(uncoveredParts([{ l: 10, chord: 'G' }, { l: 13.5, chord: 'D' }], lrc), ['Tengo algo mal pensado'])
+  assert.deepEqual(uncoveredParts([{ l: 10, chord: 'G' }, { l: 25, chord: 'D' }], lrc), [])
 })

@@ -1,5 +1,5 @@
-// Se ejecuta en GitHub Actions después de «npx cap add android»: agrega «Compartir → Mi Cancionero» (intent SEND de texto) y la
-// MainActivity que entrega el enlace a la página. Falla con un mensaje claro si la plantilla de Capacitor cambió.
+// Se ejecuta en GitHub Actions después de «npx cap add android»: agrega «Compartir → Mi Cancionero» (intent SEND de texto o de un
+// archivo de Mi Cancionero), «Abrir con → Mi Cancionero» (VIEW) y la MainActivity que entrega el enlace o el archivo a la página. Falla con un mensaje claro si la plantilla de Capacitor cambió.
 import fs from 'node:fs'
 const man = 'android/app/src/main/AndroidManifest.xml'
 let xml = fs.readFileSync(man, 'utf8')
@@ -10,6 +10,14 @@ if (!xml.includes('android.intent.action.SEND')) {
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/octet-stream" />
                 <data android:mimeType="text/plain" />
             </intent-filter>`
   xml = xml.slice(0, i) + extra + xml.slice(i + '</intent-filter>'.length)

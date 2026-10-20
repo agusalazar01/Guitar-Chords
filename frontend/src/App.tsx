@@ -19,10 +19,10 @@ import { decodeToMono } from './lib/decodeAudio.ts'
 import { CANCELLED, runSelfTest, startAnalysis } from './lib/engine/runWorker.ts'
 import { NMETHOD } from './lib/engine/analyzeNotes.ts'
 import { deleteSong, listSongs, requestPersistence, saveOrder, saveSong, topOrder } from './lib/songs.ts'
-import { searchLyrics } from './lib/lrclib.ts'
-import { cleanTitle, parseVideoTitle, songbookText, pastedLyrics, pickConfident, rankResults, toSongLyrics } from './lib/lyrics.ts'
+import { searchLyrics, searchPlainLyrics } from './lib/lrclib.ts'
+import { cleanTitle, fitAnchors, parseVideoTitle, songbookText, pastedLyrics, pickConfident, rankResults, toSongLyrics } from './lib/lyrics.ts'
 import type { LyricAnchor, LyricResult as LR } from './lib/lyrics.ts'
-import { alignCifrado, chordSequence, cifradoSegments, parseCifrado } from './lib/cifrado.ts'
+import { alignCifrado, chordSequence, cifradoLyrics, cifradoMeta, cifradoSegments, lyricsFromChords, parseCifrado, uncoveredParts, upgradeCifrado } from './lib/cifrado.ts'
 import { estimateBeats, simplifyChord } from './lib/grid.ts'
 import { hasWebPicker, importFromSongbook, pickYouTube, saveFile, shareFile, songbookSearchUrl } from './lib/webPicker.ts'
 import { FILE_EXT, decodeSongs, encodeSongs, safeName, songsToAdd } from './lib/songfile.ts'
@@ -154,6 +154,19 @@ export default function App() {
     }
     return () => { delete w.__shareText }
   }, [])
+  const importRef = useRef<(f: File) => void>(() => undefined)
+  useEffect(() => { // APK: un archivo de Mi Cancionero compartido o abierto desde WhatsApp, Descargas… (lo llama MainActivity)
+    const w = window as unknown as { __importFile?: (b64: string, name: string) => void }
+    w.__importFile = (b64: string, name: string) => {
+      try {
+        const bin = atob(b64), bytes = new Uint8Array(bin.length)
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+        setDrawer(true)
+        importRef.current(new File([bytes], name || 'cancion.cancionero'))
+      } catch { setNotice('No se pudo leer el archivo que abriste.') }
+    }
+    return () => { delete w.__importFile }
+  }, [])
 
   // El desfase solo tiene sentido cuando los acordes de un archivo se muestran sobre un video.
   const eo = mode === 'youtube' && source === 'analysis' ? offset : 0
@@ -161,6 +174,16 @@ export default function App() {
     const t = transposeSegments(base, transpose - capo)
     return !advanced && !(song?.audio && song.kind === 'analysis') ? t.map((x) => ({ ...x, chord: simplifyChord(x.chord) })) : t
   }, [base, transpose, capo, advanced, song?.audio, song?.kind]) // con cejilla se muestran las formas a tocar
+  // Sin letra sincronizada: la letra de la página de acordes sigue a los acordes (si los tiempos de los acordes están bien —p. ej.
+  // marcados con «Marcar los cambios a mano»— la letra también).
+  const chordLyrics = useMemo(() => {
+    if (song?.kind !== 'cifrado' || !song.cifrado?.lines || song.lyrics?.synced) return null
+    if (song.lyrics && song.lyrics.artistName !== 'letra de la página de acordes') return null // letra pegada por el usuario: se respeta
+    const starts = base.filter((x) => x.chord !== 'N').map((x) => x.start)
+    const synced = lyricsFromChords(song.cifrado.lines, starts)
+    return synced.length >= 3 ? { source: 'manual' as const, trackName: song.filename, artistName: 'letra de la página, al ritmo de los acordes', synced, plain: null } : null
+  }, [song?.kind, song?.cifrado?.lines, song?.lyrics, song?.filename, base])
+  const shownLyrics = chordLyrics ?? song?.lyrics ?? null
   const activeIndex = stepMode && segments.length ? Math.min(stepIdx, segments.length - 1) : findActiveIndex(segments, player.time + ahead, eo)
   const shownIdx = activeIndex >= 0 ? activeIndex : focusIdx !== null && focusIdx < segments.length ? focusIdx : null
   const seg = shownIdx !== null ? segments[shownIdx] : null
@@ -275,7 +298,9 @@ export default function App() {
       if (m === CANCELLED) setNotice('Análisis cancelado.'); else setJobErr(m)
     } finally { cancelRef.current = null; setJob(null) }
   }
-  function openSong(s: Song, preferVideo = false) {
+  function openSong(s0: Song, preferVideo = false) {
+    const s = refreshCifrado(s0)
+    if (s !== s0) saveSong(s).then(refreshSongs).catch(() => undefined)
     const adv = s.kind !== 'analysis' && !s.audio ? !s.settings.simplified : !!s.advanced && (s.settings.simplified !== undefined ? !s.settings.simplified : !s.corrections) // por defecto, los acordes completos
     songRef.current = s; setSong(s)
     if (s.audio) { showAudio(s.audio, s.filename); if (preferVideo && s.settings.videoId) setMode('youtube') }
@@ -285,6 +310,15 @@ export default function App() {
     setTranspose(s.settings.transpose); setCapo(s.settings.capo ?? 0); setOffset(s.settings.offset)
     setVideoId(s.settings.videoId ?? null) // cada canción abre su propio video (o ninguno)
     setNotice(null)
+  }
+  /** Canción de cancionero guardada con una versión anterior: se vuelve a leer el cifrado y a ubicar los acordes con las reglas
+   *  actuales (acordes con punto, tablaturas, estrofas repetidas). Si el usuario corrigió acordes a mano, no se toca. */
+  function refreshCifrado(s: Song): Song {
+    if (s.kind !== 'cifrado' || !s.cifrado?.lines || s.corrections) return s
+    const lines = upgradeCifrado(s.cifrado.lines) ?? s.cifrado.lines
+    const events = alignCifrado(lines, s.lyrics?.synced ?? null)
+    if (JSON.stringify(events) === JSON.stringify(s.cifrado.events)) return s
+    return { ...s, cifrado: { ...s.cifrado, lines, events }, original: cifradoSegments(events, s.duration, s.lyricsAnchors ?? [], s.lyricsOffset ?? 0) }
   }
   /** Guarda una letra en la canción abierta; si no hay ninguna, crea una entrada nueva en el cancionero (todavía sin acordes). */
   function attachLyrics(r: LyricResult) {
@@ -337,9 +371,17 @@ export default function App() {
     const events = alignCifrado(cif, cur.lyrics?.synced ?? null)
     const dur = yt.duration || cur.duration || (events[events.length - 1]?.l ?? 0) + 10
     const segs = cifradoSegments(events, dur, cur.lyricsAnchors ?? [], cur.lyricsOffset ?? 0)
-    persist({ kind: 'cifrado', cifrado: { events, lines: cif }, original: segs, corrections: null, duration: dur,
+    const meta = cifradoMeta(text)
+    // Sin letra de LRCLIB: se usa la letra de la propia página de acordes (sin tiempos).
+    const ownLyrics = !cur.lyrics ? cifradoLyrics(cif) : ''
+    persist({ kind: 'cifrado', cifrado: { events, lines: cif, capo: meta.capo, key: meta.key }, original: segs, corrections: null, duration: dur,
+      ...(meta.key ? { key: meta.key } : {}),
+      ...(ownLyrics ? { lyrics: { ...pastedLyrics(ownLyrics, cur.filename), source: 'manual' as const, artistName: 'letra de la página de acordes' } } : {}),
       method: cur.lyrics?.synced ? 'acordes del cancionero ubicados con la letra' : 'acordes del cancionero sin letra con tiempos (2 s por acorde: ajustalos)' })
-    setBase(segs); setUndo([]); setSource('analysis'); setFocusIdx(null); setMarkOpen(false); setPasteOpen(false); setPasteText(''); setNotice(null); setAdvanced(true)
+    // Partes de la letra sin ningún acorde: la página no las trae (versión incompleta) → avisar para probar otra versión.
+    const miss = [...new Set(uncoveredParts(events, cur.lyrics?.synced ?? null))]
+    const missMsg = miss.length ? `La página no trae acordes para ${miss.length === 1 ? 'la parte' : `${miss.length} partes`} que empieza${miss.length === 1 ? '' : 'n'} con ${miss.slice(0, 3).map((m) => `«${m.slice(0, 40)}»`).join(', ')}. Si las necesitás, probá otra versión de la canción en el cancionero.` : null
+    setBase(segs); setUndo([]); setSource('analysis'); setFocusIdx(null); setMarkOpen(false); setPasteOpen(false); setPasteText(''); setNotice(missMsg); setAdvanced(true)
     return true
   }
   const songbookQuery = () => {
@@ -499,6 +541,7 @@ export default function App() {
       setNotice(add.length ? `Se agregaron ${add.length} ${add.length === 1 ? 'canción' : 'canciones'} a Mi cancionero.` : 'Esas canciones ya estaban en tu cancionero.')
     } catch (e) { setNotice((e as Error).message) } finally { setFileBusy(null) }
   }
+  importRef.current = (f: File) => { void importSongs(f) }
   const fileNow = () => Math.max(0, player.time - eo)
 
   function applyChord(raw: string) {
@@ -545,6 +588,11 @@ export default function App() {
       }
       if (lyricAsked.current !== key) return
       const ranked = rankResults(pool, want.query, lyrDur).slice(0, 3)
+      if (!ranked.length && want.artist) { // segunda fuente: solo texto, se ofrece para elegir
+        const alt = await searchPlainLyrics(want.artist, want.title)
+        if (lyricAsked.current !== key) return
+        if (alt) ranked.push(alt)
+      }
       setLyricCands(ranked.length ? ranked : null)
       setLyricsNote(ranked.length ? null : failed ? 'No se pudo buscar la letra (LRCLIB no respondió).' : 'No encontré la letra de esta canción.')
       setLyricsTried(true)
@@ -552,13 +600,15 @@ export default function App() {
   }, [wantsLyrics, lyrName, lyrDur, song?.id]) // eslint-disable-line react-hooks/exhaustive-deps
   const small = 'btn'
   const box = 'card'
+  const fmtDur = (d: number) => `${Math.floor(d / 60)}:${String(Math.round(d % 60)).padStart(2, '0')}`
   const fileTime = player.time - eo
   const viewTime = fileTime + ahead // lo que se muestra (con anticipación opcional)
   const bpb = song?.beatsPerBar ?? 4
   const gridBeats = useMemo(() => (song?.beats?.length ? song.beats : estimateBeats(segments, song?.duration || player.duration || 0)), [song?.beats, segments, song?.duration, player.duration])
   const gridDownbeat = song?.beats?.length ? song.downbeat ?? 0 : 0
   const bpos = song?.beats?.length ? beatPosition(song.beats, viewTime, song.downbeat ?? 0, bpb) : null
-  const info = [song?.key && `Tonalidad: ${song.key}`, song?.bpm && `≈ ${Math.round(song.bpm)} bpm`, bpos && `compás ${bpos.bar}, tiempo ${bpos.inBar + 1} (estimado, 4/4)`].filter(Boolean).join(' · ')
+  const info = [song?.key && `Tonalidad: ${song.key}${song.kind === 'cifrado' ? ' (según la página)' : ''}`,
+    song?.cifrado?.capo && `la página indica cejilla en el ${song.cifrado.capo}: los acordes ya están escritos para tocar con esa cejilla`, song?.bpm && `≈ ${Math.round(song.bpm)} bpm`, bpos && `compás ${bpos.bar}, tiempo ${bpos.inBar + 1} (estimado, 4/4)`].filter(Boolean).join(' · ')
   const nowTitle = song?.lyrics?.source === 'lrclib' ? song.lyrics.trackName : song?.filename ?? (mode === 'youtube' ? yt.title : audioName)
   const nowArtist = song?.lyrics?.source === 'lrclib' ? song.lyrics.artistName : ''
   const latest = songs.slice(0, 4)
@@ -655,9 +705,13 @@ export default function App() {
               </div>
             </section>)
         })()}
-        {song?.lyrics && !stepMode && <LyricsView lyrics={song.lyrics} time={viewTime} offset={song.lyricsOffset ?? 0} anchors={song.lyricsAnchors ?? []}
+        {shownLyrics && !stepMode && <LyricsView lyrics={shownLyrics} followsChords={!!chordLyrics} time={viewTime} offset={chordLyrics ? 0 : song?.lyricsOffset ?? 0} anchors={chordLyrics ? [] : song?.lyricsAnchors ?? []}
           onAdjust={adjustLyrics} onSeek={(t) => { if (hasMedia) player.seek(Math.max(0, t + eo)) }} onRemove={() => persist({ lyrics: null, lyricsAnchors: [] })}
           onChange={() => { setLyricsOpen(true); setChordsOpen(false) }} />}
+        {song?.lyrics?.duration && player.duration > 0 && Math.abs(song.lyrics.duration - player.duration) > 6 && !(song.lyricsAnchors?.length) && !stepMode && (
+          <p className="flex flex-wrap items-center gap-2 text-xs text-mute">La letra encontrada es de otra grabación ({fmtDur(song.lyrics.duration)}; esta dura {fmtDur(player.duration)}): puede ir adelantada o atrasada.
+            <button className={small} onClick={() => song.lyrics?.synced && adjustLyrics({ offset: 0, anchors: fitAnchors(song.lyrics.synced, song.lyrics.duration ?? 0, player.duration) })}>Ajustar la letra a esta grabación</button>
+            <span>Después, si hace falta, «⚙ Ajustar letra» → «Esta línea empieza ahora».</span></p>)}
         {lyricCands && !song?.lyrics && !lyricsOpen && (
           <section className={box}>
             <h2 className="text-sm font-semibold">¿Es alguna de estas letras?</h2>
@@ -671,7 +725,8 @@ export default function App() {
               <button className={small} onClick={() => { setLyricCands(null); if (songRef.current) persist({ lyrics: null }) }}>Sin letra</button>
             </div>
           </section>)}
-        {lyricsNote && !song?.lyrics && !lyricCands && !lyricsOpen && <p className="flex flex-wrap items-center gap-2 text-sm text-mute">{lyricsNote}
+        {lyricsNote && !song?.lyrics && !chordLyrics && !lyricCands && !lyricsOpen && <p className="flex flex-wrap items-center gap-2 text-sm text-mute">{lyricsNote}
+          {song?.cifrado?.lines?.some((l) => l.text.trim()) && <button className="btn-primary" onClick={() => persist({ lyrics: { ...pastedLyrics(cifradoLyrics(song.cifrado!.lines!), song.filename), source: 'manual', artistName: 'letra de la página de acordes' }, lyricsOffset: 0, lyricsAnchors: [] })}>Usar la letra de la página de acordes</button>}
           <button className={small} onClick={() => { setLyricsWeb(true); setLyricsOpen(true); setChordsOpen(false) }}>Buscar la letra en una página</button>
           <button className={small} onClick={() => { setLyricsWeb(false); setLyricsOpen(true); setChordsOpen(false) }}>Pegar o buscar de nuevo</button></p>}
 

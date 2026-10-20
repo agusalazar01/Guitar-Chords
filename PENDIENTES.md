@@ -160,3 +160,41 @@ Sigue pendiente:
 - Segunda fuente automática de letras (la página web cubre el caso a mano).
 - Sincronizar la letra sola con el canto (sección 1) — investigación.
 - Motor de audio propio (Mi de paso, D7 cortos, Gmaj7/Cm7): en pausa por decisión del usuario.
+
+## 13. v0.8.2 (con la copia del cancionero del usuario, 20/10/2026)
+- «Zafar»: solo 15 cambios de acorde en toda la canción. Causas encontradas con los datos guardados:
+  1. La página escribe los acordes con punto («Am.», «Dm.»): no se reconocían y quedaban como letra. → Se aceptan.
+  2. Las líneas de tablatura de la intro («E|---0---|») se tomaban como letra. → Se ignoran.
+  3. La estrofa se repite al final de la canción y los acordes se unían a la última aparición (la primera quedaba sin cambios).
+     → Se unen a la primera; las repeticiones se completan como antes.
+  4. Solo se importaba el bloque <pre> más largo; LaCuerda puede partir la canción en varios. → Se importan todos, en orden.
+  Con la copia: «Zafar» pasa de 15 a 41 cambios (estrofa Am-Dm-G en cada línea); las otras canciones quedan igual o mejor.
+  Las canciones guardadas se recalculan solas al abrirlas (salvo las corregidas a mano). Para el estribillo de «Zafar» hay que
+  volver a importar los acordes con la v0.8.2 (la importación anterior no lo trajo).
+- Compartir quedaba «cargando» en WhatsApp y otras apps. Causa más probable: la otra app leía el archivo desde Mi Cancionero, que
+  en segundo plano puede quedar congelada. → En Android 10+ el archivo se guarda en Descargas/Mi Cancionero y se comparte desde
+  ahí (lo sirve el sistema). Si igual falla, el archivo queda en Descargas para adjuntarlo a mano. A confirmar en el teléfono.
+
+## 14. v0.8.2 — prueba con 10 canciones del usuario (copia «cancionero_V08.1»)
+- Los cancioneros escriben los acordes solo la primera vez de cada estrofa/estribillo. → Las estrofas de la letra sincronizada
+  (cortadas en líneas vacías, silencios largos o, si no hay, en cuartetas) que quedan casi sin acordes copian los de la estrofa
+  anterior más parecida, línea por línea. «Brindis por Pierrot» 89 → 242 cambios; «Orejano» 27 → 2 líneas sin acorde; «Alfonsina»,
+  «Doña Soledad», «Zafar» mejoran mucho. Partes que la página no trae (puente de «Bicho de ciudad») quedan sin acordes: no se inventan.
+- «Gurisito» no se podía importar: LaCuerda escribe «RE», «SOL5», «LA4», «MIm», «Solº», «A)RE» y tablatura con cuerdas latinas.
+  → Se leen (en minúsculas sin nada más, «la», «mi», «si», siguen siendo palabras de la letra).
+- Ajustar la letra: ±¼ s funcionaba pero no se notaba. → «⚙ Ajustar letra»: «Esta línea empieza ahora» (también si la letra va
+  adelantada), «La próxima empieza ahora», «Sincronizar tocando» (tocar en la lista cada línea cuando se canta) y correr todo ±1/±5 s.
+  Aviso cuando la letra de LRCLIB es de otra grabación (duración distinta).
+- Tono y cejilla de la página («Tono: G», «Capo en 2», «Capotraste na 2ª casa»): se leen, se muestran y no se confunden con acordes.
+- Sin letra de LRCLIB: se usa la letra de la página de acordes (sin tiempos), automáticamente al importar o con un botón.
+- Pendiente: «Loco en el desierto» y «Zafar» siguen con líneas sin acordes (importación incompleta: volver a importar con v0.8.2).
+- Pedido del usuario (hecho en v0.8.2): sin letra sincronizada, la letra de la página de acordes sigue a los acordes (cada línea
+  aparece con su primer acorde). Si los acordes se marcaron a mano con buenos tiempos, la letra queda bien sin LRCLIB.
+- También en v0.8.2 (elegidos por el usuario, 1 a 4):
+  1. «Ajustar la letra a esta grabación»: con la letra de otra grabación, un toque la estira o achica a la duración del video
+     (dos puntos de ajuste); después se afina con «Esta línea empieza ahora».
+  2. Abrir un archivo de Mi Cancionero desde WhatsApp, Descargas, etc. («Compartir» o «Abrir con → Mi Cancionero»): se importa solo.
+  3. Al importar acordes, aviso de las partes de la letra que la página no trae (p. ej. el estribillo de «Zafar»).
+  4. Segunda fuente de letras (lyrics.ovh, solo texto) cuando LRCLIB no responde o no encuentra: se ofrece para elegir.
+  A probar en el teléfono: 2 (parte nativa) y 4 (que lyrics.ovh responda).
+- Siguen para después: «Marcar cambios» por estrofa, sincronizar la letra con el canto (audio propio), motor de IA (en pausa).

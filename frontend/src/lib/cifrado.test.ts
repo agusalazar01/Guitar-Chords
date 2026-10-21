@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { alignCifrado, cifradoLyrics, cifradoMeta, cifradoSegments, lyricsFromChords, isTabLine, compressToSung, barsFromTaps, gridFromBars, METERS, midBeat, MIN_CHORD_GAP, placeOnBeats, normalizeChord, parseCifrado, uncoveredParts, upgradeCifrado } from './cifrado.ts'
+import { alignCifrado, cifradoLyrics, cifradoMeta, cifradoSegments, lyricsFromChords, isTabLine, compressToSung, barsFromTaps, gridFromBars, snapToBeats, METERS, midBeat, MIN_CHORD_GAP, placeOnBeats, normalizeChord, parseCifrado, uncoveredParts, upgradeCifrado } from './cifrado.ts'
 import { addAnchor } from './lyrics.ts'
 
 test('normalizeChord: inglés, latino, bemoles y calidades', () => {
@@ -239,4 +239,21 @@ test('Marcar pulso: dos líneas no ponen acordes en el mismo golpe (no desaparec
   const pts = [{ t: 0, chord: 'Am' }, { t: 1.7, chord: 'G' }, { t: 1.9, chord: 'C' }]
   const out = placeOnBeats(pts, [{ t: 0, end: 1.95 }, { t: 1.95, end: 4 }], beats)
   assert.equal(new Set(out.map((p) => p.t)).size, 3)
+})
+
+test('Marcar pulso: los «uno» se estiman promediando los toques (el dedo no es exacto)', () => {
+  const ruido = [0.05, -0.04, 0.03, -0.06, 0.02, 0.04, -0.03, -0.05, 0.06, -0.02, 0.01, -0.04]
+  const unos = ruido.map((r, i) => 10 + i * 2.4 + r)
+  const out = barsFromTaps(unos, 4)
+  const err = (xs: number[]) => xs.reduce((a, x, i) => a + Math.abs(x - (10 + i * 2.4)), 0) / xs.length
+  assert.ok(err(out) < err(unos) * 0.75, `${err(out)} vs ${err(unos)}`)
+  assert.equal(out.length, unos.length)
+})
+
+test('MP3 con «Marcar pulso»: los cambios se corren al golpe más cercano sin juntarse', () => {
+  const seg = (start: number, end: number, chord: string) => ({ start, end, chord, confidence: null })
+  const beats = [0, 0.5, 1, 1.5, 2, 2.5, 3]
+  const out = snapToBeats([seg(0, 0.93, 'C'), seg(0.93, 1.62, 'G'), seg(1.62, 2.2, 'Am'), seg(2.2, 3, 'F')], beats)
+  assert.deepEqual(out.map((s) => s.start), [0, 1, 1.5, 2.2]) // F a 0,2 de un golpe y 0,3 de otro: queda (más de ⅓ de golpe)
+  assert.equal(out[1].end, 1.5)
 })

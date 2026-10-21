@@ -289,3 +289,18 @@ Sigue pendiente:
 - Interfaz más limpia (pedido): se sacaron «Marcar a mano» (armar acordes desde cero sobre el video), el «Marcar los cambios a mano»
   repetido en Opciones, «Desfase/Alinear», las casillas «Inicio (s)/Fin (s)», «Ver secuencia de demostración» y «Analizar mi audio
   con la IA» dentro de Acordes (sigue en la pantalla de inicio). Quedan «Marcar los cambios a mano» (acorde quieto) y «Marcar pulso».
+
+## 20. v0.8.8 (en preparación) — ideas del usuario para la próxima versión
+- «Empezó a cantar» también cuando la letra se adelanta (la letra ya corre y todavía no se canta): mientras están las 3 primeras
+  líneas y no se marcó el comienzo, aparece el botón debajo de la letra; al tocarlo, la primera línea empieza en ese momento y toda
+  la letra (y los acordes que la siguen) se corre igual. Antes solo existía en la intro (letra atrasada).
+- Sin el aviso en rojo «La página no trae acordes para la parte…» al importar/pegar cifrados (pedido del usuario). Las partes que
+  faltan se siguen completando con una estrofa parecida cuando se puede.
+- «Marcar pulso» con estimación de los toques: cada «uno» sale de una recta local por las marcas vecinas (±8 golpes o ±3
+  compases), sigue los cambios de tempo, una marca muy desviada pesa poco, los toques dobles se descartan y los golpes salteados
+  se completan. Simulado (dedo con ±40 ms): error típico de cada «uno» 27 → 12 ms marcando los «uno», ~8 ms marcando cada golpe.
+  Se guardan los toques tal cual y los «uno» se calculan al usarlos.
+- «Marcar pulso» también en MP3 analizados: los cambios de acorde se corren al golpe marcado más cercano (si está a menos de ~⅓
+  de golpe), sin juntar dos cambios; lo analizado queda guardado igual (se aplica al mostrar), «Borrar marcas» vuelve atrás.
+- Letra de los MP3: se leen artista y título escritos dentro del archivo (ID3v2/ID3v1) y se buscan con eso; si no hay, el nombre
+  del archivo como antes.

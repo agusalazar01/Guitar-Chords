@@ -483,27 +483,60 @@ export const METERS: Record<string, { bpb: number; mid: number; pulses: number }
 }
 export const midBeat = (t: BarTaps) => (t.meter && METERS[t.meter] ? METERS[t.meter].mid : t.bpb === 4 ? 3 : 0)
 
-/** Pulsos a partir de los «unos» marcados: cada compás se divide en bpb tiempos iguales. Devuelve [segundo, nº de tiempo]. */
 /** Las marcas del usuario pueden ser cada golpe (el pulso) o solo el «uno» de cada compás. Si parecen golpes (marcas muy
  *  seguidas para ser compases), la primera marca es un «uno» y se toma una de cada `pulses`. Devuelve los «uno».
- *  (No se puede deducir el «uno» de los acordes: con los tiempos de la letra caen en cualquier golpe por igual.) */
+ *  (No se puede deducir el «uno» de los acordes: con los tiempos de la letra caen en cualquier golpe por igual.)
+ *  El dedo no es exacto: cada «uno» sale de promediar las marcas vecinas (recta local, que sigue los cambios de tempo de la
+ *  grabación), una marca muy desviada pesa poco y los golpes salteados se completan. */
 export function barsFromTaps(taps: number[], pulses: number): number[] {
   const t = [...taps].sort((a, b) => a - b)
-  if (t.length < 2 || pulses < 2) return t
+  if (t.length < 2) return t
   const gaps = t.slice(1).map((x, i) => x - t[i]).sort((a, b) => a - b)
   const med = gaps[gaps.length >> 1]
-  const beats = med < 0.8 || (med < 1.2 && pulses >= 3) // un compás de 3 o más golpes en menos de 1,2 s sería rapidísimo
-  if (!beats || t.length < 2 * pulses) return t
-  // si se saltó o se duplicó un golpe, se reacomoda contando golpes por tiempo y no por cantidad de marcas
-  const out = [t[0]]
-  let n = 0
+  if (!(med > 0.05)) return t
+  const beats = pulses >= 2 && (med < 0.8 || (med < 1.2 && pulses >= 3)) // un compás de 3 o más golpes en menos de 1,2 s sería rapidísimo
+  if (beats && t.length < 2 * pulses) return t
+  // número de cada marca contando golpes (o compases) por tiempo: un golpe salteado o un toque doble no corre la cuenta
+  const K = [0], T = [t[0]] // toque doble (menos de medio golpe después del anterior que quedó): queda el primero
   for (let i = 1; i < t.length; i++) {
-    n += Math.max(1, Math.round((t[i] - t[i - 1]) / med))
-    while (n >= pulses) { n -= pulses; out.push(+(t[i] - n * med).toFixed(3)) }
+    // dónde «debería» estar el último golpe contado y cuánto dura un golpe, según las últimas marcas (recta): así un toque
+    // desviado no suma ni resta un golpe a la cuenta
+    const n0 = Math.max(0, K.length - 8), kk = K.slice(n0), tt = T.slice(n0), m = kk.length
+    let per = med, last = T[T.length - 1]
+    if (m >= 4) {
+      const mk = kk.reduce((a, b) => a + b, 0) / m, mt = tt.reduce((a, b) => a + b, 0) / m
+      let num = 0, den = 0
+      for (let j = 0; j < m; j++) { num += (kk[j] - mk) * (tt[j] - mt); den += (kk[j] - mk) ** 2 }
+      if (den > 0 && num / den > 0.5 * med && num / den < 2 * med) { per = num / den; last = mt + per * (K[K.length - 1] - mk) }
+    }
+    const g = Math.round((t[i] - last) / per)
+    if (g >= 1) { K.push(K[K.length - 1] + g); T.push(t[i]) }
   }
+  const H = beats ? 8 : 3 // ventana: ±8 golpes o ±3 compases
+  let rw = K.map(() => 1) // pesos por marca (bajan para las muy desviadas)
+  const fit = (q: number) => {
+    let sw = 0, sk = 0, st = 0, skk = 0, skt = 0
+    for (let i = 0; i < K.length; i++) {
+      const d = Math.abs(K[i] - q) / (H + 1)
+      if (d >= 1) continue
+      const w = (1 - d * d * d) ** 3 * rw[i]
+      sw += w; sk += w * K[i]; st += w * T[i]; skk += w * K[i] * K[i]; skt += w * K[i] * T[i]
+    }
+    if (sw <= 0) return NaN
+    const den = sw * skk - sk * sk
+    const b = Math.abs(den) > 1e-9 ? (sw * skt - sk * st) / den : 0
+    return (st - b * sk) / sw + b * q
+  }
+  if (K.length >= 4) {
+    const res = K.map((q, i) => T[i] - fit(q)), mad = [...res].map(Math.abs).sort((a, b) => a - b)[res.length >> 1] || 0.01
+    rw = res.map((r) => { const u = r / (6 * mad); return Math.abs(u) < 1 ? (1 - u * u) ** 2 : 0 })
+  }
+  const step = beats ? pulses : 1, out: number[] = []
+  for (let q = 0; q <= K[K.length - 1]; q += step) { const v = K.length >= 3 ? fit(q) : NaN; out.push(+(Number.isFinite(v) ? v : T[0] + q * med).toFixed(3)) }
   return out
 }
 
+/** Pulsos a partir de los «unos» marcados: cada compás se divide en bpb tiempos iguales. Devuelve [segundo, nº de tiempo]. */
 export function gridFromBars(bars: number[], bpb: number): [number, number][] {
   const b = [...bars].sort((x, y) => x - y), out: [number, number][] = []
   for (let i = 0; i + 1 < b.length; i++) { const d = (b[i + 1] - b[i]) / bpb; for (let k = 0; k < bpb; k++) out.push([b[i] + k * d, k + 1]) }
@@ -564,4 +597,20 @@ export function cifradoSegments(ev: ChordEvent[], duration: number, anchors: Lyr
 /** Secuencia de acordes en orden (para el modo «Siguiente»): sirve con «Am F C G» o con un cifrado completo. */
 export function chordSequence(text: string): string[] {
   return parseCifrado(text).flatMap((l) => l.chords.map((c) => c.chord))
+}
+
+/** MP3 analizado + «Marcar pulso»: cada cambio de acorde se corre al golpe marcado más cercano (si está a menos de ~⅓ de golpe),
+ *  sin juntar dos cambios en el mismo golpe. No cambia la cantidad de acordes (los índices siguen valiendo). */
+export function snapToBeats(segs: Segment[], beats: number[], tol = 0.35): Segment[] {
+  if (beats.length < 2 || segs.length < 2) return segs
+  const starts = segs.map((s) => s.start)
+  for (let i = 1; i < segs.length; i++) {
+    const t = segs[i].start
+    let lo = 0, hi = beats.length - 1
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (beats[m] <= t) lo = m; else hi = m }
+    const b = Math.abs(beats[lo] - t) <= Math.abs(beats[hi] - t) ? beats[lo] : beats[hi]
+    const step = beats[hi] - beats[lo] || 0.5
+    if (Math.abs(b - t) <= tol * step && b > starts[i - 1] + 0.05 && (i + 1 >= segs.length || b < segs[i + 1].start - 0.05)) starts[i] = Math.round(b * 100) / 100
+  }
+  return segs.map((s, i) => ({ ...s, start: starts[i], end: i + 1 < segs.length ? starts[i + 1] : s.end }))
 }

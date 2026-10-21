@@ -10,6 +10,7 @@ export interface Song {
   kind?: 'analysis' | 'manual' | 'cifrado' // cifrado = acordes de un cancionero ubicados con la letra
   cifrado?: { events: ChordEvent[]; lines?: CifradoLine[]; capo?: number; key?: string } // acordes del cifrado en el tiempo de la letra (se recalculan al ajustar la letra)
   order?: number // posición en «Mi cancionero» (menor = más arriba)
+  tags?: { artist?: string; title?: string } // artista y título escritos dentro del MP3 (para buscar la letra)
   taps?: { bars: number[]; bpb: number; meter?: string } // «Marcar pulso»: segundo de cada «uno» marcado, tiempos por compás y compás (4/4, 6/8…)
   lyrics?: SongLyrics | null; lyricsOffset?: number // letra (LRCLIB o propia) y su corrimiento en segundos
   lyricsAnchors?: LyricAnchor[] // puntos «esta línea empieza acá» marcados por el usuario (ajustan intro y versiones más lentas o rápidas)

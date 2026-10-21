@@ -28,6 +28,11 @@ export default function LyricsView({ lyrics, time, offset, anchors, onAdjust, on
   const round = (x: number) => Math.round(x * 100) / 100
   const intro = !!first && lt < first.t
   const adjusted = anchors.length > 0 || offset !== 0
+  // La letra arrancó antes que el canto: mientras corren las primeras líneas (y todavía no se marcó el comienzo) se ofrece
+  // «Empezó a cantar» también acá; al tocarlo, la primera línea pasa a empezar en ese momento y todo lo demás se corre igual.
+  const firstIdx = lines && first ? lines.indexOf(first) : -1
+  const early = !intro && firstIdx >= 0 && idx >= firstIdx && lines!.slice(firstIdx, idx + 1).filter((l) => l.text).length <= 3
+    && !anchors.some((a) => Math.abs(a.l - first!.t) < 0.01)
   return (
     <section className="py-1" aria-label="Letra">
       {lines ? (
@@ -41,6 +46,10 @@ export default function LyricsView({ lyrics, time, offset, anchors, onAdjust, on
           <div aria-live="off">
             <p key={idx} className="anim-rise min-h-9 text-2xl font-bold leading-snug">{cur || <span className="text-mute">♪</span>}</p>
             {upcoming.map((t, i) => <p key={i} className={`leading-snug text-mute ${i === 0 ? 'text-lg' : 'text-base opacity-70'}`}>{t}</p>)}
+            {early && first && !followsChords && <div className="mt-1 flex flex-wrap items-center gap-2">
+              <button className="min-h-10 rounded-lg bg-accent px-3 text-sm font-semibold text-accent-fg" onClick={() => onAdjust({ anchors: addAnchor(anchors, first.t, time - offset) })}>Empezó a cantar</button>
+              <span className="text-xs text-mute">¿La letra se adelantó? Tocá cuando empiece a cantar «{first.text.slice(0, 28)}{first.text.length > 28 ? '…' : ''}»</span>
+            </div>}
           </div>
         )
       ) : <p className="text-sm text-mute">Esta letra no tiene tiempos: se muestra completa.</p>}

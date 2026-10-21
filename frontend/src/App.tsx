@@ -14,6 +14,7 @@ import { findActiveIndex, loopTarget, transposeChord, transposeSegments } from '
 import { moveEnd, moveStart, nextChange, removeAt, retimeAt, setChordAt, splitAt } from './lib/segments.ts'
 import { beatPosition } from './lib/engine/beats.ts'
 import { validateAudioFile } from './lib/audioFile.ts'
+import { readId3 } from './lib/id3.ts'
 import { decodeToMono } from './lib/decodeAudio.ts'
 import { CANCELLED, runSelfTest, startAnalysis } from './lib/engine/runWorker.ts'
 import { NMETHOD } from './lib/engine/analyzeNotes.ts'
@@ -21,7 +22,7 @@ import { deleteSong, listSongs, requestPersistence, saveOrder, saveSong, topOrde
 import { searchLyrics, searchPlainLyrics } from './lib/lrclib.ts'
 import { cleanTitle, fitAnchors, parseVideoTitle, songbookText, pastedLyrics, pickConfident, rankResults, toSongLyrics } from './lib/lyrics.ts'
 import type { LyricAnchor, LyricLine, LyricResult as LR } from './lib/lyrics.ts'
-import { METERS, alignCifrado, barsFromTaps, gridFromBars, chordSequence, cifradoLyrics, cifradoMeta, cifradoSegments, lyricsFromChords, parseCifrado, uncoveredParts, upgradeCifrado } from './lib/cifrado.ts'
+import { METERS, alignCifrado, barsFromTaps, gridFromBars, snapToBeats, chordSequence, cifradoLyrics, cifradoMeta, cifradoSegments, lyricsFromChords, parseCifrado, upgradeCifrado } from './lib/cifrado.ts'
 import { estimateBeats, simplifyChord } from './lib/grid.ts'
 import { hasWebPicker, importFromSongbook, pickYouTube, saveFile, shareFile, songbookSearchUrl } from './lib/webPicker.ts'
 import { FILE_EXT, decodeSongs, encodeSongs, safeName, songsToAdd } from './lib/songfile.ts'
@@ -172,10 +173,14 @@ export default function App() {
 
   // El desfase solo tiene sentido cuando los acordes de un archivo se muestran sobre un video.
   const eo = mode === 'youtube' && source === 'analysis' ? offset : 0
+  const taps = useMemo(() => tapOnes(song?.taps), [song?.taps]) // eslint-disable-line react-hooks/exhaustive-deps
+  const tapGrid = useMemo(() => (taps ? gridFromBars(taps.bars, taps.bpb).map(([t]) => t) : null), [taps])
   const segments = useMemo(() => {
-    const t = transposeSegments(base, transpose - capo)
+    // MP3 analizado con «Marcar pulso»: los cambios se corren a los golpes marcados (sin tocar lo guardado)
+    const b = tapGrid && song?.audio && song.kind === 'analysis' ? snapToBeats(base, tapGrid) : base
+    const t = transposeSegments(b, transpose - capo)
     return !advanced && !(song?.audio && song.kind === 'analysis') ? t.map((x) => ({ ...x, chord: simplifyChord(x.chord) })) : t
-  }, [base, transpose, capo, advanced, song?.audio, song?.kind]) // con cejilla se muestran las formas a tocar
+  }, [base, transpose, capo, advanced, song?.audio, song?.kind, tapGrid]) // con cejilla se muestran las formas a tocar
   // Sin letra sincronizada: la letra de la página de acordes sigue a los acordes (si los tiempos de los acordes están bien —p. ej.
   // marcados con «Marcar los cambios a mano»— la letra también).
   const chordLyrics = useMemo(() => {
@@ -269,6 +274,8 @@ export default function App() {
     setNotice(null); setJobErr(null)
     try { validateAudioFile(f.name, f.size, new Uint8Array(await f.slice(0, 12).arrayBuffer())) } catch (e) { setJobErr((e as Error).message); return }
     showAudio(f, redo?.filename ?? f.name)
+    let tags: Song['tags']
+    try { const t = readId3(new Uint8Array(await f.slice(0, 262144).arrayBuffer()), new Uint8Array(await f.slice(Math.max(0, f.size - 128)).arrayBuffer())); if (t.title) tags = t } catch { /* sin etiquetas */ }
     setJob({ filename: f.name, stage: 'decoding', progress: 0 })
     try {
       const dec = await decodeToMono(f)
@@ -282,7 +289,7 @@ export default function App() {
         lowConfidence: conf.length > 0 && conf.reduce((a, b) => a + b, 0) / conf.length < 0.6,
         original: out.segments, corrections: null, settings: { videoId, transpose: 0, offset: 0, capo: 0, advanced: true, simplified: false }, audio: f,
         beats: out.beats, bpm: out.bpm, downbeat: out.downbeat, beatsPerBar: out.beatsPerBar, key: out.key, advanced: out.advanced,
-        order: topOrder(songs),
+        order: topOrder(songs), ...(tags ? { tags } : {}),
       }
       const prev = redo ?? songRef.current
       if (redo) Object.assign(s, { id: redo.id, order: redo.order, createdAt: redo.createdAt, lyrics: redo.lyrics, lyricsOffset: redo.lyricsOffset, lyricsAnchors: redo.lyricsAnchors, filename: redo.filename, settings: { ...redo.settings, advanced: true, simplified: false } })
@@ -329,15 +336,20 @@ export default function App() {
   /** Guarda los compases marcados y vuelve a ubicar los acordes del cifrado sobre ellos (sin marcas: como antes). */
   function applyBars(bars: number[], meter: string) {
     const cur = songRef.current
-    if (!cur?.cifrado) return
+    if (!cur) return
     const bpb = METERS[meter]?.bpb ?? 4
     const ones = barsFromTaps(bars, METERS[meter]?.pulses ?? bpb)
-    const taps = ones.length >= 2 ? { bars: ones, bpb, meter } : undefined
+    const taps = ones.length >= 2 ? { bars: [...bars].sort((a, b) => a - b), bpb, meter } : undefined // se guardan los toques tal cual; los «uno» se estiman al usarlos (tapOnes)
     const next = { ...cur, taps }
+    if (!cur.cifrado) { // MP3 analizado: los cambios se corren a los golpes al mostrarlos (lo analizado queda guardado igual)
+      persist({ taps })
+      setNotice(taps ? `Listo: cambios de acorde acomodados a ${ones.length} compases marcados.` : 'Se borraron las marcas de pulso.')
+      return
+    }
     const segs = cifradoSegments(cur.cifrado.events, cur.duration, cur.lyricsAnchors ?? [], cur.lyricsOffset ?? 0, gridOf(next))
     persist({ taps, original: segs })
     if (!cur.corrections) { setBase(segs); setUndo([]) }
-    setNotice(cur.corrections ? 'Compases guardados. Tenés acordes corregidos a mano: tocá «Restaurar original» para ver los acordes acomodados al compás.' : taps ? `Listo: acordes acomodados a ${taps.bars.length} compases${taps.bars.length < bars.length ? ` (marcaste ${bars.length} golpes)` : ''}.` : 'Se borraron las marcas de pulso.')
+    setNotice(cur.corrections ? 'Compases guardados. Tenés acordes corregidos a mano: tocá «Restaurar original» para ver los acordes acomodados al compás.' : taps ? `Listo: acordes acomodados a ${ones.length} compases${ones.length < bars.length ? ` (marcaste ${bars.length} golpes)` : ''}.` : 'Se borraron las marcas de pulso.')
   }
   function refreshCifrado(s: Song): Song {
     if (s.kind !== 'cifrado' || !s.cifrado?.lines || s.corrections) return s
@@ -404,18 +416,9 @@ export default function App() {
       ...(meta.key ? { key: meta.key } : {}),
       ...(ownLyrics ? { lyrics: { ...pastedLyrics(ownLyrics, cur.filename), source: 'manual' as const, artistName: 'letra de la página de acordes' } } : {}),
       method: cur.lyrics?.synced ? 'acordes del cancionero ubicados con la letra' : 'acordes del cancionero sin letra con tiempos (2 s por acorde: ajustalos)' })
-    // Partes de la letra sin ningún acorde: la página no las trae (versión incompleta) → avisar para probar otra versión.
-    // Partes que la página no trae: se avisa cuáles quedaron sin acordes y cuáles se completaron copiando una estrofa parecida.
-    const synced = cur.lyrics?.synced ?? null
-    const missRaw = [...new Set(uncoveredParts(alignCifrado(cif, synced, { fill: false }), synced))]
-    const missNow = new Set(uncoveredParts(events, synced))
-    const guessed = missRaw.filter((m) => !missNow.has(m)), empty = missRaw.filter((m) => missNow.has(m))
-    const q = (xs: string[]) => xs.slice(0, 3).map((m) => `«${m.slice(0, 40)}»`).join(', ')
-    const missMsg = [
-      guessed.length ? `La página no trae acordes para la parte que empieza con ${q(guessed)}: se completó con los de una estrofa parecida. Revisala.` : '',
-      empty.length ? `Quedó sin acordes la parte que empieza con ${q(empty)}. Si la necesitás, probá otra versión de la canción en el cancionero.` : '',
-    ].filter(Boolean).join(' ') || null
-    setBase(segs); setUndo([]); setSource('analysis'); setFocusIdx(null); setPasteOpen(false); setPasteText(''); setNotice(missMsg); setAdvanced(true)
+    // (Sin aviso en rojo de partes que la página no trae: el usuario lo pidió quitar; esas partes se completan igual con una
+    // estrofa parecida cuando se puede.)
+    setBase(segs); setUndo([]); setSource('analysis'); setFocusIdx(null); setPasteOpen(false); setPasteText(''); setNotice(null); setAdvanced(true)
     return true
   }
   const songbookQuery = () => {
@@ -586,7 +589,7 @@ export default function App() {
   }, [wantChords, song?.lyrics, lyricsTried, lyricCands, videoId]) // eslint-disable-line react-hooks/exhaustive-deps
   // Letra automática: con el título del video (o el nombre del archivo analizado) se busca en LRCLIB. Si una versión coincide en
   // título y duración (±3 s) se guarda sola en la canción abierta; si no, se ofrecen hasta 3 para elegir. Nunca pisa una letra elegida.
-  const lyrName = mode === 'youtube' && videoId ? yt.title : song?.audio ? song.filename : ''
+  const lyrName = mode === 'youtube' && videoId ? yt.title : song?.audio ? (song.tags?.title ? `${song.tags.artist ? `${song.tags.artist} - ` : ''}${song.tags.title}` : song.filename) : ''
   const lyrDur = mode === 'youtube' && videoId ? yt.duration : song?.duration ?? 0
   const wantsLyrics = !!lyrName && lyrDur > 0 && (!song || song.lyrics === undefined) && (mode !== 'youtube' || !song || !song.settings.videoId || song.settings.videoId === videoId)
   useEffect(() => {
@@ -626,7 +629,6 @@ export default function App() {
   const fmtDur = (d: number) => `${Math.floor(d / 60)}:${String(Math.round(d % 60)).padStart(2, '0')}`
   const fileTime = player.time - eo
   const viewTime = fileTime + ahead // lo que se muestra (con anticipación opcional)
-  const taps = useMemo(() => tapOnes(song?.taps), [song?.taps]) // eslint-disable-line react-hooks/exhaustive-deps
   const bpb = taps?.bpb ?? song?.beatsPerBar ?? 4
   const gridBeats = useMemo(() => {
     const dur = song?.duration || player.duration || 0
@@ -741,7 +743,7 @@ export default function App() {
               </div>
             </section>)
         })()}
-        {barsOpen && song?.cifrado && hasMedia && (
+        {barsOpen && song && hasMedia && (
           <section className="card space-y-2" aria-label="Marcar pulso">
             <h2 className="font-semibold">Marcar pulso</h2>
             <p className="text-xs text-mute">Elegí el compás, dale play y tocá el botón grande al ritmo: en cada golpe, o solo en el «uno» de cada compás
@@ -808,7 +810,7 @@ export default function App() {
               {!song?.audio && <button className={small} onClick={() => setPasteOpen((x) => !x)}>Pegar cifrado</button>}
               {!song?.audio && <button className={small} onClick={() => { setSeqOpen(true); setChordsOpen(false) }}>Escribir acordes</button>}
               {segments.length > 0 && hasMedia && <button className={small} onClick={openRetime}>Marcar los cambios a mano</button>}
-              {song?.kind === 'cifrado' && song.lyrics?.synced && hasMedia && <button className={small} onClick={() => { setBarTaps(song.taps?.bars ?? []); setBarMeter(song.taps?.meter ?? (song.taps?.bpb === 3 ? '3/4' : '4/4')); setBarsOpen(true); setRetimeOpen(false); setStepMode(false); setChordsOpen(false) }}>Marcar pulso{song.taps ? ' ✓' : ''}</button>}
+              {((song?.kind === 'cifrado' && song.lyrics?.synced) || (song?.audio && song.kind === 'analysis')) && hasMedia && <button className={small} onClick={() => { setBarTaps(song.taps?.bars ?? []); setBarMeter(song.taps?.meter ?? (song.taps?.bpb === 3 ? '3/4' : '4/4')); setBarsOpen(true); setRetimeOpen(false); setStepMode(false); setChordsOpen(false) }}>Marcar pulso{song.taps ? ' ✓' : ''}</button>}
             </div>
             {segments.length > 0 && hasMedia && <p className="text-xs text-mute">¿Algún acorde cae a destiempo? «Marcar los cambios a mano»: tocás un botón en cada cambio mientras suena y queda guardado.</p>}
           </section>)}

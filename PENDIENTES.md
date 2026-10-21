@@ -273,3 +273,19 @@ Sigue pendiente:
   tolerando golpes salteados. El «uno» no se puede deducir de los acordes (con los tiempos de la letra caen en cualquier golpe
   por igual, medido), por eso se pide empezar en un «uno». Zafar simulado marcando golpes: Am 2,4 · Dm 1,2 · G 1,2.
 - placeOnBeats: dos líneas podían poner acordes en el mismo golpe y uno desaparecía; ahora no se repite golpe.
+
+## 19. v0.8.7 — barra de tiempos como cinta (video del 21/10, 18:01)
+- Pedido: que la barra de arriba corra con la canción como una línea (no casilleros fijos donde solo cambia el contenido), que se
+  pueda mover para adelante y atrás como el carrusel de acordes. Hecho: cinta con todos los tiempos de la canción, «ahora» fijo
+  (línea blanca al 30 %), el tiempo actual subrayado, cada acorde escrito donde entra y ocupando hasta el siguiente (nombre
+  completo, el que suena en color). Se arrastra para mirar (vuelve sola a los 3 s); tocar un tiempo lleva la canción ahí.
+  Abajo dice «pulso marcado» o «pulso estimado».
+- Zafar en el video seguía con los tiempos sin marcar (Dm 35,4 · G 37,2 · Am 37,7). Las marcas guardadas con la 0.8.5 (cada golpe)
+  ahora también se convierten a compases al abrir la canción. Si sigue igual: pedir la copia de seguridad para ver las marcas.
+- «Marcar los cambios a mano» con el acorde quieto (pedido: en Zafar el G pasaba antes de poder tocarlo): mientras se marca, el
+  acorde en pantalla no se va hasta tocar el botón; el toque hace empezar AL SIGUIENTE de la secuencia (no al que la app tenía en
+  ese segundo), así no se saltea ninguno aunque en la app durara menos. Deshacer vuelve al acorde anterior; si se retrocede el video
+  se sigue desde el acorde de ese momento.
+- Interfaz más limpia (pedido): se sacaron «Marcar a mano» (armar acordes desde cero sobre el video), el «Marcar los cambios a mano»
+  repetido en Opciones, «Desfase/Alinear», las casillas «Inicio (s)/Fin (s)», «Ver secuencia de demostración» y «Analizar mi audio
+  con la IA» dentro de Acordes (sigue en la pantalla de inicio). Quedan «Marcar los cambios a mano» (acorde quieto) y «Marcar pulso».

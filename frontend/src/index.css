@@ -30,3 +30,6 @@ body { background: var(--bg); color: var(--fg); font-family: 'Bricolage Grotesqu
 .steam path:nth-child(3) { animation-delay: 1.6s }
 .splash-out { animation: fadeout .35s ease-in forwards }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
+
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

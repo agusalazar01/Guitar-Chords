@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Controls, { PlayExtras } from './components/Controls.tsx'
 import LyricsSearch from './components/LyricsSearch.tsx'
 import DiagramView from './components/Diagram.tsx'
-import { AudioPanel, MarkPanel, SearchPanel } from './components/Panels.tsx'
+import { AudioPanel, SearchPanel } from './components/Panels.tsx'
 import Songbook from './components/Songbook.tsx'
 import LyricsView from './components/LyricsView.tsx'
 import type { Job } from './components/Panels.tsx'
@@ -11,8 +11,7 @@ import ChordStrip from './components/ChordStrip.tsx'
 import { useAudioPlayer } from './hooks/useAudioPlayer.ts'
 import { useYouTubePlayer } from './hooks/useYouTubePlayer.ts'
 import { findActiveIndex, loopTarget, transposeChord, transposeSegments } from './lib/chords.ts'
-import { DEMO_SEGMENTS } from './lib/demo.ts'
-import { markChordAt, moveEnd, moveStart, nextChange, removeAt, retimeAt, setChordAt, splitAt } from './lib/segments.ts'
+import { moveEnd, moveStart, nextChange, removeAt, retimeAt, setChordAt, splitAt } from './lib/segments.ts'
 import { beatPosition } from './lib/engine/beats.ts'
 import { validateAudioFile } from './lib/audioFile.ts'
 import { decodeToMono } from './lib/decodeAudio.ts'
@@ -99,8 +98,6 @@ export default function App() {
   const [lyricsWeb, setLyricsWeb] = useState(false) // abrir la búsqueda de letra directo en una página web
   const [chordsOpen, setChordsOpen] = useState(false) // menú «Acordes»
   const [searchKey, setSearchKey] = useState(0) // «+ Nueva» vuelve a crear el buscador (limpio)
-  const [markOpen, setMarkOpen] = useState(false) // marcar acordes sobre el video
-  const [markKey, setMarkKey] = useState('C')
   const [ahead, setAhead] = useState(() => store.get('ahead', 0)) // adelantar en pantalla los cambios (s)
   const [drawer, setDrawer] = useState(false) // menú «Mi cancionero»
   const [lyricCands, setLyricCands] = useState<LyricResult[] | null>(null) // letras sugeridas para la canción o el video actual
@@ -112,6 +109,8 @@ export default function App() {
   const [importing, setImporting] = useState(false)
   const [lyricsTried, setLyricsTried] = useState(false)
   const [retimeOpen, setRetimeOpen] = useState(false) // «Marcar cambios»: tocar en cada cambio de acorde
+  const [held, setHeld] = useState(-1) // «Marcar cambios»: el acorde que queda quieto en pantalla hasta el próximo toque
+  const heldStack = useRef<number[]>([])
   const [barsOpen, setBarsOpen] = useState(false) // «Marcar pulso»: tocar en cada «uno» mientras suena
   const [barTaps, setBarTaps] = useState<number[]>([])
   const [barMeter, setBarMeter] = useState('4/4')
@@ -187,7 +186,9 @@ export default function App() {
     return synced.length >= 3 ? { source: 'manual' as const, trackName: song.filename, artistName: 'letra de la página, al ritmo de los acordes', synced, plain: null } : null
   }, [song?.kind, song?.cifrado?.lines, song?.lyrics, song?.filename, base])
   const shownLyrics = chordLyrics ?? song?.lyrics ?? null
-  const activeIndex = stepMode && segments.length ? Math.min(stepIdx, segments.length - 1) : findActiveIndex(segments, player.time + ahead, eo)
+  const activeIndex = stepMode && segments.length ? Math.min(stepIdx, segments.length - 1)
+    : retimeOpen && held >= 0 && held < segments.length ? held // marcando a mano: el acorde no se va hasta que se toque el cambio
+    : findActiveIndex(segments, player.time + ahead, eo)
   const shownIdx = activeIndex >= 0 ? activeIndex : focusIdx !== null && focusIdx < segments.length ? focusIdx : null
   const seg = shownIdx !== null ? segments[shownIdx] : null
   const chordName = seg ? seg.chord : null
@@ -227,7 +228,7 @@ export default function App() {
     if (job) { setNotice('Esperá a que termine (o cancelá) el análisis en curso.'); return }
     yt.pause(); au.pause(); clearSong()
     setVideoId(null); if (audioUrl) URL.revokeObjectURL(audioUrl); setAudioUrl(null); setAudioName(''); setMode('youtube')
-    setLoop(null); setRate(1); setNotice(null); setJobErr(null); setMarkOpen(false); setSearchOpen(true); setOptsOpen(false); setLyricCands(null); setLyricsNote(null)
+    setLoop(null); setRate(1); setNotice(null); setJobErr(null); setSearchOpen(true); setOptsOpen(false); setLyricCands(null); setLyricsNote(null)
     setSearchKey((k) => k + 1); setLyricsOpen(false); setChordsOpen(false); setPasteOpen(false); setPasteText(''); setSearchHint('')
     setRetimeOpen(false); setStepMode(false); setStepIdx(0); setSeqOpen(false); setSeqText(''); setSeqName('')
   }
@@ -237,7 +238,7 @@ export default function App() {
     if (audioUrl) URL.revokeObjectURL(audioUrl)
     setAudioUrl(null); setAudioName(''); setMode('youtube'); setVideoId(keepVideo)
     lyricAsked.current = ''
-    setNotice(null); setJobErr(null); setMarkOpen(false); setOptsOpen(false); setLyricCands(null); setLyricsNote(null); setLyricsTried(false)
+    setNotice(null); setJobErr(null); setOptsOpen(false); setLyricCands(null); setLyricsNote(null); setLyricsTried(false)
     setLyricsOpen(false); setChordsOpen(false); setPasteOpen(false); setPasteText(''); setRetimeOpen(false); setStepMode(false); setStepIdx(0)
     setSeqOpen(false); setSeqText(''); setSeqName('')
   }
@@ -253,7 +254,6 @@ export default function App() {
       else if (cur && !job) resetScreenForNew(v.id)
       if (!audioUrl || !songRef.current) setMode('youtube')
       if (source === 'demo') { setBase([]); setSource('none') }
-      setMarkOpen(false)
     }
     if (v.title) {
       const next = [{ id: v.id, title: v.title }, ...recent.filter((r) => r.id !== v.id)].slice(0, 6)
@@ -293,7 +293,6 @@ export default function App() {
       const full = !!s.advanced
       setBase(full ? (s.advanced as Segment[]) : s.original); setUndo([]); setSource('analysis'); setAdvanced(full); setFocusIdx(null)
       setTranspose(s.settings.transpose); setCapo(s.settings.capo ?? 0); setOffset(s.settings.offset)
-      setMarkOpen(false)
       await saveSong(s); void refreshSongs()
       if (out.warning) setNotice(out.warning)
     } catch (e) {
@@ -308,7 +307,7 @@ export default function App() {
     songRef.current = s; setSong(s)
     if (s.audio) { showAudio(s.audio, s.filename); if (preferVideo && s.settings.videoId) setMode('youtube') }
     else { if (audioUrl) URL.revokeObjectURL(audioUrl); setAudioUrl(null); setAudioName(''); setMode('youtube') }
-    setMarkOpen(false); setAlt({}); setLyricCands(null); setLyricsNote(null); setRetimeOpen(false); setStepIdx(0); setStepMode(!s.audio && !s.settings.videoId && s.original.length > 0)
+    setAlt({}); setLyricCands(null); setLyricsNote(null); setRetimeOpen(false); setStepIdx(0); setStepMode(!s.audio && !s.settings.videoId && s.original.length > 0)
     setAdvanced(adv); setBase(s.corrections ?? (adv && s.advanced ? (s.advanced as Segment[]) : s.original)); setUndo([]); setSource('analysis'); setFocusIdx(null)
     setTranspose(s.settings.transpose); setCapo(s.settings.capo ?? 0); setOffset(s.settings.offset)
     setVideoId(s.settings.videoId ?? null) // cada canción abre su propio video (o ninguno)
@@ -317,9 +316,15 @@ export default function App() {
   /** Canción de cancionero guardada con una versión anterior: se vuelve a leer el cifrado y a ubicar los acordes con las reglas
    *  actuales (acordes con punto, tablaturas, estrofas repetidas). Si el usuario corrigió acordes a mano, no se toca. */
   /** Compases marcados («Marcar pulso») listos para ubicar los acordes; sin marcas o sin letra sincronizada, nada. */
+  /** Los «uno» marcados (las marcas guardadas por la 0.8.5 pueden ser cada golpe: se pasan a compases acá también). */
+  function tapOnes(t?: Song['taps']) {
+    if (!t || t.bars.length < 2) return undefined
+    const bars = barsFromTaps(t.bars, (t.meter && METERS[t.meter]?.pulses) || t.bpb)
+    return bars.length >= 2 ? { ...t, bars } : undefined
+  }
   function gridOf(s: Song, synced?: LyricLine[] | null) {
-    const lines = synced ?? s.lyrics?.synced
-    return s.taps && s.taps.bars.length >= 2 && lines ? { ...s.taps, lines } : undefined
+    const lines = synced ?? s.lyrics?.synced, t = tapOnes(s.taps)
+    return t && lines ? { ...t, lines } : undefined
   }
   /** Guarda los compases marcados y vuelve a ubicar los acordes del cifrado sobre ellos (sin marcas: como antes). */
   function applyBars(bars: number[], meter: string) {
@@ -410,7 +415,7 @@ export default function App() {
       guessed.length ? `La página no trae acordes para la parte que empieza con ${q(guessed)}: se completó con los de una estrofa parecida. Revisala.` : '',
       empty.length ? `Quedó sin acordes la parte que empieza con ${q(empty)}. Si la necesitás, probá otra versión de la canción en el cancionero.` : '',
     ].filter(Boolean).join(' ') || null
-    setBase(segs); setUndo([]); setSource('analysis'); setFocusIdx(null); setMarkOpen(false); setPasteOpen(false); setPasteText(''); setNotice(missMsg); setAdvanced(true)
+    setBase(segs); setUndo([]); setSource('analysis'); setFocusIdx(null); setPasteOpen(false); setPasteText(''); setNotice(missMsg); setAdvanced(true)
     return true
   }
   const songbookQuery = () => {
@@ -477,10 +482,6 @@ export default function App() {
     else if (loop.end <= loop.start) setLoop({ start: loop.start, end: Math.max(player.time, loop.start + 0.5) })
     else setLoop(null)
   }
-  function alignToVideo() { // el usuario marca en el video el instante en que empieza el acorde elegido
-    if (shownIdx === null) return
-    setOffset(Math.round((player.time - segments[shownIdx].start) * 10) / 10); setNotice(null)
-  }
   async function removeSong(s: Song) {
     if (!window.confirm(`¿Borrar «${s.filename}», sus acordes y el audio guardado en este teléfono?`)) return
     try {
@@ -489,37 +490,31 @@ export default function App() {
       void refreshSongs()
     } catch (e) { setNotice((e as Error).message) }
   }
-  function markChord(raw: string) {
-    if (!videoId) return
-    const name = raw.trim()
-    if (!CHORD_OK.test(name)) { setNotice(`«${name}» no es un acorde admitido.`); return }
-    const chord = name === 'N' ? 'N' : transposeChord(name, capo - transpose) // se guarda en el tono real
-    const t = yt.time, dur = yt.duration || t + 1
-    let cur = songRef.current
-    if (cur && cur.kind === 'manual' && !cur.settings.videoId) { cur = { ...cur, settings: { ...cur.settings, videoId } }; songRef.current = cur } // canción de la letra: se une a este video
-    if (!cur || cur.kind !== 'manual' || cur.settings.videoId !== videoId) {
-      const title = yt.title || recent.find((r) => r.id === videoId)?.title || `Video ${videoId}`
-      cur = { id: crypto.randomUUID(), kind: 'manual', filename: title, createdAt: Date.now(), duration: dur, method: 'acordes marcados a mano sobre el video',
-        lowConfidence: false, original: [], corrections: null, settings: { videoId, transpose, offset: 0, capo, advanced: false }, audio: null, order: topOrder(songs) }
-      songRef.current = cur; setSong(cur); setUndo([]); setSource('analysis'); setOffset(0); setAdvanced(false)
-      saveSong(cur).then(refreshSongs).catch((e: Error) => setNotice(e.message))
-    }
-    const prevBase = cur.original
-    const next = markChordAt(prevBase, t, chord, dur)
-    if (next === prevBase) return
-    setUndo((u) => [...u.slice(-49), prevBase]); setBase(next); setNotice(null)
-    persist({ original: next, duration: dur })
-  }
   function selectChord(i: number) { if (stepMode) { setStepIdx(i); return } setFocusIdx(i); player.seek(segments[i].start + eo); player.play() }
-  /** «Marcar cambios»: el próximo acorde empieza ahora; lo que sigue se corre igual hasta el próximo toque. */
+  /** El acorde siguiente al `i` (sin contar silencios), o -1. */
+  const nextAfter = (segs: Segment[], i: number) => { let j = i + 1; while (j < segs.length && segs[j].chord === 'N') j++; return j < segs.length ? j : -1 }
+  function openRetime() {
+    setHeld(findActiveIndex(base, Math.max(0, player.time - eo))); heldStack.current = []
+    setRetimeOpen(true); setStepMode(false); setChordsOpen(false); setOptsOpen(false); setBarsOpen(false)
+  }
+  /** «Marcar cambios»: el acorde que sigue al que está quieto en pantalla empieza ahora; lo que viene después se corre igual hasta
+   *  el próximo toque. Ningún acorde se pasa solo: aunque la app lo tuviera más corto, sigue en pantalla hasta que se toque. */
   function tapChange() {
     const t = Math.max(0, player.time - eo)
-    const j = nextChange(base, t)
+    const j = held >= 0 ? nextAfter(base, held) : nextChange(base, -1)
     if (j < 0) { setNotice('No quedan más cambios de acorde.'); return }
     const next = retimeAt(base, j, t)
     if (!next) { setNotice('Ese toque cae antes del cambio anterior: retrocedé un poco el video y volvé a marcar.'); return }
-    commit(next)
+    const k = next.findIndex((x) => Math.abs(x.start - t) < 0.006 && x.chord === base[j].chord)
+    heldStack.current.push(held)
+    commit(next); setHeld(k >= 0 ? k : j)
   }
+  function undoMark() { undoLast(); setHeld(heldStack.current.pop() ?? -1) }
+  useEffect(() => { // si se vuelve atrás en el video mientras se marca, se sigue desde el acorde de ese momento
+    if (!retimeOpen || held < 0 || !base[held]) return
+    const t = Math.max(0, player.time - eo)
+    if (t < base[held].start - 0.3) { setHeld(findActiveIndex(base, t)); heldStack.current = [] }
+  }, [player.time, retimeOpen]) // eslint-disable-line react-hooks/exhaustive-deps
   /** Modo «Siguiente» con una secuencia escrita («Am F C G»): se toca acorde por acorde, sin tiempos. */
   function applySequence() {
     const chords = chordSequence(seqText)
@@ -579,7 +574,6 @@ export default function App() {
     if (!CHORD_OK.test(name)) { setNotice(`«${name}» no es un acorde admitido (mayor, menor, séptima o N).`); return }
     commit(setChordAt(base, shownIdx, name === 'N' ? 'N' : transposeChord(name, capo - transpose)))
   }
-  const num = (v: string, f: (t: number) => Segment[]) => { const t = Number(v.replace(',', '.')); if (Number.isFinite(t)) commit(f(t)) }
 
   const hasMedia = !!(videoId || audioUrl)
   useEffect(() => {
@@ -632,7 +626,7 @@ export default function App() {
   const fmtDur = (d: number) => `${Math.floor(d / 60)}:${String(Math.round(d % 60)).padStart(2, '0')}`
   const fileTime = player.time - eo
   const viewTime = fileTime + ahead // lo que se muestra (con anticipación opcional)
-  const taps = song?.taps && song.taps.bars.length >= 2 ? song.taps : undefined
+  const taps = useMemo(() => tapOnes(song?.taps), [song?.taps]) // eslint-disable-line react-hooks/exhaustive-deps
   const bpb = taps?.bpb ?? song?.beatsPerBar ?? 4
   const gridBeats = useMemo(() => {
     const dur = song?.duration || player.duration || 0
@@ -719,7 +713,7 @@ export default function App() {
         {notice && <p role="alert" className="rounded-xl bg-red-500/10 p-2 text-sm text-red-400">{notice}</p>}
         {fileBusy && <p role="status" className="text-sm text-mute">{fileBusy}</p>}
         {segments.length > 0 && <>
-          {!stepMode && <BeatGrid segments={segments} beats={gridBeats} downbeat={gridDownbeat} bpb={bpb} time={viewTime} hideNames={hideNames} marked={!!taps} />}
+          {!stepMode && <BeatGrid segments={segments} beats={gridBeats} downbeat={gridDownbeat} bpb={bpb} time={viewTime} hideNames={hideNames} marked={!!taps} onSeek={(t) => { if (hasMedia) player.seek(Math.max(0, t + eo)) }} />}
           <ChordStrip segments={segments} activeIndex={activeIndex} time={stepMode ? segments[activeIndex]?.start ?? 0 : viewTime} hideNames={hideNames} easyOnly={easyOnly}
             alt={alt} onAlt={(c) => setAlt((a) => ({ ...a, [c]: (a[c] ?? 0) + 1 }))} onSelect={selectChord} />
         </>}
@@ -731,15 +725,18 @@ export default function App() {
             <p className="col-span-2 text-center text-xs text-mute">Acorde {activeIndex + 1} de {segments.length}{activeIndex >= segments.length - 1 ? ' · fin' : ''}</p>
           </div>)}
         {retimeOpen && !stepMode && segments.length > 0 && hasMedia && (() => {
-          const j = nextChange(base, Math.max(0, player.time - eo))
+          const j = held >= 0 ? nextAfter(base, held) : nextChange(base, -1)
+          const nm = (i: number) => (hideNames ? '?' : segments[i]?.chord === 'N' ? '—' : segments[i]?.chord ?? '')
           return (
             <section className="card space-y-2" aria-label="Marcar cambios">
-              <p className="text-xs text-mute">Dale play y tocá el botón justo cuando cambia el acorde. Lo que sigue se corre con tu toque; seguí marcando hasta el final o hasta que quede bien. Se guarda solo en tu cancionero.</p>
+              <p className="text-xs text-mute">Dale play. El acorde queda quieto hasta que toques el botón: tocalo justo cuando la canción cambia al siguiente.
+                Así no se te pasa ninguno, aunque en la app durara menos. Si te equivocás, «Deshacer» o volvé el video atrás. Se guarda en tu cancionero.</p>
+              <p className="text-center text-sm">Suena: <b className="text-lg">{held >= 0 ? nm(held) : '—'}</b></p>
               <button className="btn-primary h-20 w-full text-2xl" disabled={j < 0} onClick={tapChange}>
-                <Icon name="tap" className="h-6 w-6" /> {j < 0 ? 'No hay más cambios' : `Cambia a ${hideNames ? '?' : segments[j].chord}`}</button>
+                <Icon name="tap" className="h-6 w-6" /> {j < 0 ? 'No hay más cambios' : `Cambia a ${nm(j)}`}</button>
               <div className="flex gap-2 whitespace-nowrap">
                 {!player.playing && <button className="btn flex-1" onClick={player.play}>▶ Play</button>}
-                <button className="btn flex-1" onClick={undoLast} disabled={!undo.length}>Deshacer</button>
+                <button className="btn flex-1" onClick={undoMark} disabled={!undo.length}>Deshacer</button>
                 <button className="btn flex-1" onClick={() => setRetimeOpen(false)}>Listo</button>
               </div>
             </section>)
@@ -810,13 +807,10 @@ export default function App() {
               {!song?.audio && !hasWebPicker() && songbookQuery() && <a className={small} href={songbookSearchUrl(songbookQuery())} target="_blank" rel="noreferrer">Buscar cifrado ↗</a>}
               {!song?.audio && <button className={small} onClick={() => setPasteOpen((x) => !x)}>Pegar cifrado</button>}
               {!song?.audio && <button className={small} onClick={() => { setSeqOpen(true); setChordsOpen(false) }}>Escribir acordes</button>}
-              {mode === 'youtube' && videoId && !song?.audio && <button className={small} onClick={() => setMarkOpen(true)}>Marcar a mano</button>}
-              {segments.length > 0 && hasMedia && <button className={small} onClick={() => { setRetimeOpen(true); setStepMode(false); setChordsOpen(false) }}>Marcar los cambios a mano</button>}
+              {segments.length > 0 && hasMedia && <button className={small} onClick={openRetime}>Marcar los cambios a mano</button>}
               {song?.kind === 'cifrado' && song.lyrics?.synced && hasMedia && <button className={small} onClick={() => { setBarTaps(song.taps?.bars ?? []); setBarMeter(song.taps?.meter ?? (song.taps?.bpb === 3 ? '3/4' : '4/4')); setBarsOpen(true); setRetimeOpen(false); setStepMode(false); setChordsOpen(false) }}>Marcar pulso{song.taps ? ' ✓' : ''}</button>}
             </div>
             {segments.length > 0 && hasMedia && <p className="text-xs text-mute">¿Algún acorde cae a destiempo? «Marcar los cambios a mano»: tocás un botón en cada cambio mientras suena y queda guardado.</p>}
-            <div><h3 className="mb-1 text-sm font-semibold">Analizar mi audio con la IA (lo más preciso)</h3>
-              <AudioPanel job={job} error={jobErr} onFile={pickFile} onCancel={() => cancelRef.current?.()} compact /></div>
           </section>)}
         {seqOpen && (
           <section className={`${box} space-y-2`} aria-label="Escribir acordes">
@@ -839,12 +833,6 @@ export default function App() {
               <button className={small} onClick={() => setPasteOpen(false)}>Cerrar</button>
             </div>
           </section>)}
-        {markOpen && mode === 'youtube' && videoId && (
-          <section className={box}>
-            <div className="mb-2 flex items-center justify-between"><h2 className="font-semibold">Marcar acordes en este video</h2>
-              <button className={small} onClick={() => setMarkOpen(false)}>Cerrar</button></div>
-            <MarkPanel time={yt.time} used={[...new Set(segments.map((x) => x.chord))]} onMark={markChord} onUndo={undoLast} canUndo={!!undo.length} keyName={markKey} onKey={setMarkKey} />
-          </section>)}
 
         {optsOpen && (
           <section className={`${box} space-y-2 text-sm`} aria-label="Opciones">
@@ -865,27 +853,14 @@ export default function App() {
               </div>
             </details>
             <details className="rounded-xl bg-panel2 p-2">
-              <summary className="min-h-9 cursor-pointer font-semibold">Ajustar</summary>
+              <summary className="min-h-9 cursor-pointer font-semibold">Editar un acorde</summary>
               <div className="mt-2 space-y-3">
-                {segments.length > 0 && hasMedia && <button className={small} onClick={() => { setRetimeOpen(true); setStepMode(false); setOptsOpen(false) }}>Marcar los cambios a mano</button>}
-                {mode === 'youtube' && source === 'analysis' && song?.kind === 'analysis' && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span>Desfase {offset.toFixed(1)} s</span>
-                    <button className={small} onClick={() => setOffset((o) => Math.round((o - 0.1) * 10) / 10)}>−0,1</button>
-                    <button className={small} onClick={() => setOffset((o) => Math.round((o + 0.1) * 10) / 10)}>+0,1</button>
-                    <button className={small} disabled={shownIdx === null} onClick={alignToVideo}>Alinear: este acorde empieza ahora</button>
-                  </div>)}
                 {seg && shownIdx !== null && source !== 'none' ? (
                   <div><h3 className="mb-2 font-semibold">Editar acorde {shownIdx + 1}</h3>
                     <div className="grid grid-cols-3 gap-2">
                       <label className="col-span-3">Acorde (ej. Am, F#, E7, Dsus4, N)
                         <input key={`c${shownIdx}${seg.chord}`} defaultValue={seg.chord} onBlur={(e) => e.target.value.trim() !== seg.chord && applyChord(e.target.value)}
                           onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} className="field mt-1 w-full" /></label>
-                      <label>Inicio (s)
-                        <input key={`s${shownIdx}${seg.start}`} inputMode="decimal" defaultValue={seg.start} onBlur={(e) => num(e.target.value, (t) => moveStart(base, shownIdx, t))} className="field mt-1 w-full px-2" /></label>
-                      <label>Fin (s)
-                        <input key={`e${shownIdx}${seg.end}`} inputMode="decimal" defaultValue={seg.end} onBlur={(e) => num(e.target.value, (t) => moveEnd(base, shownIdx, t))} className="field mt-1 w-full px-2" /></label>
-                      <span />
                       <button className={small} onClick={() => commit(moveStart(base, shownIdx, fileTime))}>Inicio = ahora</button>
                       <button className={small} onClick={() => commit(moveEnd(base, shownIdx, fileTime))}>Fin = ahora</button>
                       <button className={small} onClick={() => commit(splitAt(base, shownIdx, fileTime))}>Dividir aquí</button>
@@ -904,7 +879,6 @@ export default function App() {
                 {source === 'analysis' && song && <p className="text-xs text-mute">«{song.filename}» · {song.method}.{info ? ` ${info}.` : ''}{song.lowConfidence && ' Confianza media baja: revisá los acordes marcados con ≈.'}</p>}
                 {song && <button className={small} onClick={() => void shareSong(song)}><Icon name="share" className="h-4 w-4" /> Compartir esta canción</button>}
                 {song && <button className={small} onClick={() => void saveSongFile(song)}>Guardar archivo de esta canción</button>}
-                {hasMedia && !song && <button className={small} onClick={() => { setBase(DEMO_SEGMENTS); setSource('demo'); songRef.current = null; setSong(null); setUndo([]) }}>Ver secuencia de demostración</button>}
                 <button className={small} onClick={() => setDrawer(true)}>Ver Mi cancionero ({songs.length})</button>
               </div>
             </details>

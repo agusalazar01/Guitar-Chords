@@ -242,3 +242,19 @@ Sigue pendiente:
 - Dónde se pierde el resto: con tolerancia de ±0,5 s el acierto sería 66,6 %, ±1 s 73,4 %, ±2 s 79,3 %; el cifrado trae el acorde
   correcto el 96 % del tiempo. O sea: el límite es el tiempo exacto dentro de la línea, no los acordes. LRCLIB no trae tiempos
   por palabra en ninguna de las 181 letras.
+
+## 17. v0.8.5 — «Marcar pulso» (pedido del usuario: la música va por compás y tiempos)
+- Medido con 145 canciones con referencia exacta (pulsos reales de ChoCo):
+  · Ubicar los acordes de cada línea en tiempos completos, con fuerte preferencia por el «uno»: conociendo el pulso real,
+    acierto 54,7 % → 58,3 % y error típico de cada cambio 0,64 → 0,10 s.
+  · Simulando que el usuario marca el «uno» durante toda la canción (con ±60 ms de imprecisión): 58,1 % y 0,13 s.
+  · Marcar solo 4–8 compases al principio NO sirve: el pulso de las grabaciones varía (la rejilla se corre ~1,75 s al final,
+    mediana; >4 s en 1 de cada 4). Re-anclar en cada línea con la letra tampoco alcanzó (~55 %).
+- Implementado: «Acordes» → «Marcar pulso» (solo canciones de cancionero con letra sincronizada). Botón grande «Uno» mientras
+  suena; compás 2/4, 3/4, 4/4, 5/4, 6/8, 12/8 (con tiempo fuerte intermedio); Deshacer, Borrar marcas, «Listo: acomodar acordes». Se guarda en la canción (taps) y los acordes
+  de las líneas marcadas se ubican sobre esos pulsos; lo no marcado queda como antes. No pisa correcciones hechas a mano.
+- Sin marcar el compás la app no puede conocer los tiempos en YouTube (no tiene el audio). Probado repartir la línea en cuartos
+  sin pulso: arregla duraciones como «Zafar» (Am 2 tiempos, Dm 1, G 1) pero queda corrido por el comienzo del canto; no se aplicó.
+- Barra de compás (pedido: simple y bien a la vista): un casillero por tiempo, más alto, el acorde escrito grande en el tiempo donde
+  entra (el que sigue sonando al empezar el compás, atenuado), tiempo actual en color de acento, el «uno» con borde a la izquierda,
+  avanza de compás en compás (2 compases a la vista; 1 en 6/8 y 12/8). Con «Marcar pulso» usa los «uno» marcados y el compás elegido.

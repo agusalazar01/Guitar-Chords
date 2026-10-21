@@ -21,8 +21,8 @@ import { NMETHOD } from './lib/engine/analyzeNotes.ts'
 import { deleteSong, listSongs, requestPersistence, saveOrder, saveSong, topOrder } from './lib/songs.ts'
 import { searchLyrics, searchPlainLyrics } from './lib/lrclib.ts'
 import { cleanTitle, fitAnchors, parseVideoTitle, songbookText, pastedLyrics, pickConfident, rankResults, toSongLyrics } from './lib/lyrics.ts'
-import type { LyricAnchor, LyricResult as LR } from './lib/lyrics.ts'
-import { alignCifrado, chordSequence, cifradoLyrics, cifradoMeta, cifradoSegments, lyricsFromChords, parseCifrado, uncoveredParts, upgradeCifrado } from './lib/cifrado.ts'
+import type { LyricAnchor, LyricLine, LyricResult as LR } from './lib/lyrics.ts'
+import { METERS, alignCifrado, gridFromBars, chordSequence, cifradoLyrics, cifradoMeta, cifradoSegments, lyricsFromChords, parseCifrado, uncoveredParts, upgradeCifrado } from './lib/cifrado.ts'
 import { estimateBeats, simplifyChord } from './lib/grid.ts'
 import { hasWebPicker, importFromSongbook, pickYouTube, saveFile, shareFile, songbookSearchUrl } from './lib/webPicker.ts'
 import { FILE_EXT, decodeSongs, encodeSongs, safeName, songsToAdd } from './lib/songfile.ts'
@@ -112,6 +112,9 @@ export default function App() {
   const [importing, setImporting] = useState(false)
   const [lyricsTried, setLyricsTried] = useState(false)
   const [retimeOpen, setRetimeOpen] = useState(false) // «Marcar cambios»: tocar en cada cambio de acorde
+  const [barsOpen, setBarsOpen] = useState(false) // «Marcar pulso»: tocar en cada «uno» mientras suena
+  const [barTaps, setBarTaps] = useState<number[]>([])
+  const [barMeter, setBarMeter] = useState('4/4')
   const [stepMode, setStepMode] = useState(false) // modo «Siguiente»: avanzar acorde por acorde con un toque
   const [stepIdx, setStepIdx] = useState(0)
   const [seqOpen, setSeqOpen] = useState(false) // escribir una secuencia de acordes
@@ -313,12 +316,28 @@ export default function App() {
   }
   /** Canción de cancionero guardada con una versión anterior: se vuelve a leer el cifrado y a ubicar los acordes con las reglas
    *  actuales (acordes con punto, tablaturas, estrofas repetidas). Si el usuario corrigió acordes a mano, no se toca. */
+  /** Compases marcados («Marcar pulso») listos para ubicar los acordes; sin marcas o sin letra sincronizada, nada. */
+  function gridOf(s: Song, synced?: LyricLine[] | null) {
+    const lines = synced ?? s.lyrics?.synced
+    return s.taps && s.taps.bars.length >= 2 && lines ? { ...s.taps, lines } : undefined
+  }
+  /** Guarda los compases marcados y vuelve a ubicar los acordes del cifrado sobre ellos (sin marcas: como antes). */
+  function applyBars(bars: number[], meter: string) {
+    const cur = songRef.current
+    if (!cur?.cifrado) return
+    const taps = bars.length >= 2 ? { bars: [...bars].sort((a, b) => a - b), bpb: METERS[meter]?.bpb ?? 4, meter } : undefined
+    const next = { ...cur, taps }
+    const segs = cifradoSegments(cur.cifrado.events, cur.duration, cur.lyricsAnchors ?? [], cur.lyricsOffset ?? 0, gridOf(next))
+    persist({ taps, original: segs })
+    if (!cur.corrections) { setBase(segs); setUndo([]) }
+    setNotice(cur.corrections ? 'Compases guardados. Tenés acordes corregidos a mano: tocá «Restaurar original» para ver los acordes acomodados al compás.' : taps ? `Listo: acordes acomodados a ${taps.bars.length} compases marcados.` : 'Se borraron las marcas de pulso.')
+  }
   function refreshCifrado(s: Song): Song {
     if (s.kind !== 'cifrado' || !s.cifrado?.lines || s.corrections) return s
     const lines = upgradeCifrado(s.cifrado.lines) ?? s.cifrado.lines
     const events = alignCifrado(lines, s.lyrics?.synced ?? null)
     if (JSON.stringify(events) === JSON.stringify(s.cifrado.events)) return s
-    return { ...s, cifrado: { ...s.cifrado, lines, events }, original: cifradoSegments(events, s.duration, s.lyricsAnchors ?? [], s.lyricsOffset ?? 0) }
+    return { ...s, cifrado: { ...s.cifrado, lines, events }, original: cifradoSegments(events, s.duration, s.lyricsAnchors ?? [], s.lyricsOffset ?? 0, gridOf(s)) }
   }
   /** Guarda una letra en la canción abierta; si no hay ninguna, crea una entrada nueva en el cancionero (todavía sin acordes). */
   function attachLyrics(r: LyricResult) {
@@ -329,7 +348,7 @@ export default function App() {
       const re: Partial<Song> = {}
       if (cur.kind === 'cifrado' && cur.cifrado?.lines) { // los acordes del cancionero se vuelven a ubicar con la letra nueva
         const events = alignCifrado(cur.cifrado.lines, ly.synced)
-        re.cifrado = { ...cur.cifrado, events }; re.original = cifradoSegments(events, cur.duration, [], 0); re.corrections = null
+        re.cifrado = { ...cur.cifrado, events }; re.original = cifradoSegments(events, cur.duration, [], 0, gridOf(cur, ly.synced)); re.corrections = null
         re.method = ly.synced ? 'acordes del cancionero ubicados con la letra' : cur.method
         setBase(re.original)
       }
@@ -370,7 +389,7 @@ export default function App() {
     if (cur.audio) { setNotice('Esta canción ya tiene acordes sacados de tu audio; el cifrado no los reemplaza.'); return false }
     const events = alignCifrado(cif, cur.lyrics?.synced ?? null)
     const dur = yt.duration || cur.duration || (events[events.length - 1]?.l ?? 0) + 10
-    const segs = cifradoSegments(events, dur, cur.lyricsAnchors ?? [], cur.lyricsOffset ?? 0)
+    const segs = cifradoSegments(events, dur, cur.lyricsAnchors ?? [], cur.lyricsOffset ?? 0, gridOf(cur))
     const meta = cifradoMeta(text)
     // Sin letra de LRCLIB: se usa la letra de la propia página de acordes (sin tiempos).
     const ownLyrics = !cur.lyrics ? cifradoLyrics(cif) : ''
@@ -417,7 +436,7 @@ export default function App() {
     const anchors = a.anchors ?? cur.lyricsAnchors ?? [], off = a.offset ?? cur.lyricsOffset ?? 0
     const patch: Partial<Song> = { lyricsOffset: off, lyricsAnchors: anchors }
     if (cur.kind === 'cifrado' && cur.cifrado) {
-      const segs = cifradoSegments(cur.cifrado.events, cur.duration, anchors, off)
+      const segs = cifradoSegments(cur.cifrado.events, cur.duration, anchors, off, gridOf(cur))
       patch.original = segs
       if (!cur.corrections) setBase(segs)
     }
@@ -611,12 +630,22 @@ export default function App() {
   const fmtDur = (d: number) => `${Math.floor(d / 60)}:${String(Math.round(d % 60)).padStart(2, '0')}`
   const fileTime = player.time - eo
   const viewTime = fileTime + ahead // lo que se muestra (con anticipación opcional)
-  const bpb = song?.beatsPerBar ?? 4
-  const gridBeats = useMemo(() => (song?.beats?.length ? song.beats : estimateBeats(segments, song?.duration || player.duration || 0)), [song?.beats, segments, song?.duration, player.duration])
-  const gridDownbeat = song?.beats?.length ? song.downbeat ?? 0 : 0
-  const bpos = song?.beats?.length ? beatPosition(song.beats, viewTime, song.downbeat ?? 0, bpb) : null
+  const taps = song?.taps && song.taps.bars.length >= 2 ? song.taps : undefined
+  const bpb = taps?.bpb ?? song?.beatsPerBar ?? 4
+  const gridBeats = useMemo(() => {
+    const dur = song?.duration || player.duration || 0
+    if (taps) { // pulsos marcados; antes y después de lo marcado se sigue con el mismo largo de compás
+      const b = taps.bars, n = b.length, d0 = (b[1] - b[0]) / taps.bpb, d1 = (b[n - 1] - b[n - 2]) / taps.bpb
+      const pre: number[] = []; for (let t = b[0] - d0 * taps.bpb; t > -d0 * taps.bpb; t -= d0 * taps.bpb) pre.unshift(t)
+      const post: number[] = []; for (let t = b[n - 1] + d1 * taps.bpb; t < dur + d1 * taps.bpb; t += d1 * taps.bpb) post.push(t)
+      return gridFromBars([...pre, ...b, ...post], taps.bpb).map(([t]) => t)
+    }
+    return song?.beats?.length ? song.beats : estimateBeats(segments, dur)
+  }, [taps, song?.beats, segments, song?.duration, player.duration])
+  const gridDownbeat = taps ? 0 : song?.beats?.length ? song.downbeat ?? 0 : 0
+  const bpos = taps || song?.beats?.length ? beatPosition(gridBeats, viewTime, gridDownbeat, bpb) : null
   const info = [song?.key && `Tonalidad: ${song.key}${song.kind === 'cifrado' ? ' (según la página)' : ''}`,
-    song?.cifrado?.capo && `la página indica cejilla en el ${song.cifrado.capo}: los acordes ya están escritos para tocar con esa cejilla`, song?.bpm && `≈ ${Math.round(song.bpm)} bpm`, bpos && `compás ${bpos.bar}, tiempo ${bpos.inBar + 1} (estimado, 4/4)`].filter(Boolean).join(' · ')
+    song?.cifrado?.capo && `la página indica cejilla en el ${song.cifrado.capo}: los acordes ya están escritos para tocar con esa cejilla`, song?.bpm && `≈ ${Math.round(song.bpm)} bpm`, bpos && `compás ${bpos.bar}, tiempo ${bpos.inBar + 1} (${taps ? `pulso marcado, ${taps.meter ?? `${taps.bpb} tiempos`}` : 'estimado, 4/4'})`].filter(Boolean).join(' · ')
   const nowTitle = song?.lyrics?.source === 'lrclib' ? song.lyrics.trackName : song?.filename ?? (mode === 'youtube' ? yt.title : audioName)
   const nowArtist = song?.lyrics?.source === 'lrclib' ? song.lyrics.artistName : ''
   const latest = songs.slice(0, 4)
@@ -688,7 +717,7 @@ export default function App() {
         {notice && <p role="alert" className="rounded-xl bg-red-500/10 p-2 text-sm text-red-400">{notice}</p>}
         {fileBusy && <p role="status" className="text-sm text-mute">{fileBusy}</p>}
         {segments.length > 0 && <>
-          {!stepMode && <BeatGrid segments={segments} beats={gridBeats} downbeat={gridDownbeat} bpb={bpb} time={viewTime} hideNames={hideNames} />}
+          {!stepMode && <BeatGrid segments={segments} beats={gridBeats} downbeat={gridDownbeat} bpb={bpb} time={viewTime} hideNames={hideNames} marked={!!taps} />}
           <ChordStrip segments={segments} activeIndex={activeIndex} time={stepMode ? segments[activeIndex]?.start ?? 0 : viewTime} hideNames={hideNames} easyOnly={easyOnly}
             alt={alt} onAlt={(c) => setAlt((a) => ({ ...a, [c]: (a[c] ?? 0) + 1 }))} onSelect={selectChord} />
         </>}
@@ -713,6 +742,28 @@ export default function App() {
               </div>
             </section>)
         })()}
+        {barsOpen && song?.cifrado && hasMedia && (
+          <section className="card space-y-2" aria-label="Marcar pulso">
+            <h2 className="font-semibold">Marcar pulso</h2>
+            <p className="text-xs text-mute">Elegí el compás, dale play y tocá el botón grande cada vez que empieza un compás (el «uno», el golpe fuerte).
+              Marcá toda la canción o la parte que quieras: los acordes se acomodan a tiempos completos. Si te equivocás, «Deshacer».
+              Si no sabés el compás, dejá 4/4 (vals: 3/4; zamba y chacarera: 6/8; milonga: 2/4).</p>
+            <button className="btn-primary h-20 w-full text-2xl" onClick={() => setBarTaps((b) => [...b, fileNow()])}>
+              <Icon name="tap" className="h-6 w-6" /> Uno · {barTaps.length} marcado{barTaps.length === 1 ? '' : 's'}</button>
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-mute">Compás:</span>
+              {Object.keys(METERS).map((m) => <button key={m} className={`btn min-h-9 px-3 ${barMeter === m ? 'bg-accent text-accent-fg' : ''}`} aria-pressed={barMeter === m} onClick={() => setBarMeter(m)}>{m}</button>)}
+            </div>
+            <div className="flex flex-wrap gap-2 whitespace-nowrap">
+              {!player.playing && <button className="btn flex-1" onClick={player.play}>▶ Play</button>}
+              <button className="btn flex-1" disabled={!barTaps.length} onClick={() => setBarTaps((b) => b.slice(0, -1))}>Deshacer</button>
+              <button className="btn flex-1" disabled={!barTaps.length && !song.taps} onClick={() => { setBarTaps([]); if (song.taps) applyBars([], barMeter) }}>Borrar marcas</button>
+            </div>
+            <div className="flex gap-2">
+              <button className="btn-primary flex-1" disabled={barTaps.length < 2} onClick={() => { applyBars(barTaps, barMeter); setBarsOpen(false) }}>Listo: acomodar acordes</button>
+              <button className="btn flex-1" onClick={() => setBarsOpen(false)}>Cancelar</button>
+            </div>
+          </section>)}
         {shownLyrics && !stepMode && <LyricsView lyrics={shownLyrics} followsChords={!!chordLyrics} time={viewTime} offset={chordLyrics ? 0 : song?.lyricsOffset ?? 0} anchors={chordLyrics ? [] : song?.lyricsAnchors ?? []}
           onAdjust={adjustLyrics} onSeek={(t) => { if (hasMedia) player.seek(Math.max(0, t + eo)) }} onRemove={() => persist({ lyrics: null, lyricsAnchors: [] })}
           onChange={() => { setLyricsOpen(true); setChordsOpen(false) }} />}
@@ -759,6 +810,7 @@ export default function App() {
               {!song?.audio && <button className={small} onClick={() => { setSeqOpen(true); setChordsOpen(false) }}>Escribir acordes</button>}
               {mode === 'youtube' && videoId && !song?.audio && <button className={small} onClick={() => setMarkOpen(true)}>Marcar a mano</button>}
               {segments.length > 0 && hasMedia && <button className={small} onClick={() => { setRetimeOpen(true); setStepMode(false); setChordsOpen(false) }}>Marcar los cambios a mano</button>}
+              {song?.kind === 'cifrado' && song.lyrics?.synced && hasMedia && <button className={small} onClick={() => { setBarTaps(song.taps?.bars ?? []); setBarMeter(song.taps?.meter ?? (song.taps?.bpb === 3 ? '3/4' : '4/4')); setBarsOpen(true); setRetimeOpen(false); setStepMode(false); setChordsOpen(false) }}>Marcar pulso{song.taps ? ' ✓' : ''}</button>}
             </div>
             {segments.length > 0 && hasMedia && <p className="text-xs text-mute">¿Algún acorde cae a destiempo? «Marcar los cambios a mano»: tocás un botón en cada cambio mientras suena y queda guardado.</p>}
             <div><h3 className="mb-1 text-sm font-semibold">Analizar mi audio con la IA (lo más preciso)</h3>

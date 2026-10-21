@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { alignCifrado, cifradoLyrics, cifradoMeta, cifradoSegments, lyricsFromChords, isTabLine, compressToSung, MIN_CHORD_GAP, normalizeChord, parseCifrado, uncoveredParts, upgradeCifrado } from './cifrado.ts'
+import { alignCifrado, cifradoLyrics, cifradoMeta, cifradoSegments, lyricsFromChords, isTabLine, compressToSung, gridFromBars, METERS, midBeat, MIN_CHORD_GAP, placeOnBeats, normalizeChord, parseCifrado, uncoveredParts, upgradeCifrado } from './cifrado.ts'
 import { addAnchor } from './lyrics.ts'
 
 test('normalizeChord: inglés, latino, bemoles y calidades', () => {
@@ -203,4 +203,24 @@ test('compressToSung: un acorde de mitad de línea seguido de una pausa se ubica
   const out = compressToSung(ev, sung)
   assert.equal(out[0].l, 10); assert.equal(out[1].l, 16); assert.equal(out[3].l, 24)
   assert.ok(out[2].l < 19 && out[2].l > 16, `Am en la parte cantada: ${out[2].l}`)
+})
+
+test('Marcar compás: con los «unos» marcados, los acordes de la línea ocupan tiempos completos y prefieren el «uno»', () => {
+  // compás de 2 s (4 tiempos de 0,5 s) desde 10 s; la línea de «Zafar»: Am (2 tiempos), Dm (1), G (1)
+  const bars = [10, 12, 14, 16]
+  const grid = gridFromBars(bars, 4)
+  assert.equal(grid.length, 13)
+  const lines = [{ t: 9.8, end: 11.8 }, { t: 11.8, end: 13.8 }]
+  const pts = [{ t: 9.8, chord: 'Am' }, { t: 10.9, chord: 'Dm' }, { t: 11.3, chord: 'G' }, { t: 11.8, chord: 'Am' }]
+  const out = placeOnBeats(pts, lines, grid)
+  assert.deepEqual(out.map((p) => p.t), [10, 11, 11.5, 12])
+  // fuera de la parte marcada no se toca
+  assert.deepEqual(placeOnBeats([{ t: 30.3, chord: 'C' }], [{ t: 30, end: 34 }], grid), [{ t: 30.3, chord: 'C' }])
+})
+
+test('Marcar pulso: compases para elegir y tiempo fuerte intermedio', () => {
+  assert.deepEqual(Object.keys(METERS), ['2/4', '3/4', '4/4', '5/4', '6/8', '12/8'])
+  assert.equal(midBeat({ bars: [], bpb: 6, meter: '6/8' }), 4)
+  assert.equal(midBeat({ bars: [], bpb: 4 }), 3) // marcas guardadas antes de elegir compás
+  assert.equal(gridFromBars([0, 3], 6).length, 7)
 })

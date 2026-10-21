@@ -22,7 +22,7 @@ import { deleteSong, listSongs, requestPersistence, saveOrder, saveSong, topOrde
 import { searchLyrics, searchPlainLyrics } from './lib/lrclib.ts'
 import { cleanTitle, fitAnchors, parseVideoTitle, songbookText, pastedLyrics, pickConfident, rankResults, toSongLyrics } from './lib/lyrics.ts'
 import type { LyricAnchor, LyricLine, LyricResult as LR } from './lib/lyrics.ts'
-import { METERS, alignCifrado, gridFromBars, chordSequence, cifradoLyrics, cifradoMeta, cifradoSegments, lyricsFromChords, parseCifrado, uncoveredParts, upgradeCifrado } from './lib/cifrado.ts'
+import { METERS, alignCifrado, barsFromTaps, gridFromBars, chordSequence, cifradoLyrics, cifradoMeta, cifradoSegments, lyricsFromChords, parseCifrado, uncoveredParts, upgradeCifrado } from './lib/cifrado.ts'
 import { estimateBeats, simplifyChord } from './lib/grid.ts'
 import { hasWebPicker, importFromSongbook, pickYouTube, saveFile, shareFile, songbookSearchUrl } from './lib/webPicker.ts'
 import { FILE_EXT, decodeSongs, encodeSongs, safeName, songsToAdd } from './lib/songfile.ts'
@@ -325,12 +325,14 @@ export default function App() {
   function applyBars(bars: number[], meter: string) {
     const cur = songRef.current
     if (!cur?.cifrado) return
-    const taps = bars.length >= 2 ? { bars: [...bars].sort((a, b) => a - b), bpb: METERS[meter]?.bpb ?? 4, meter } : undefined
+    const bpb = METERS[meter]?.bpb ?? 4
+    const ones = barsFromTaps(bars, METERS[meter]?.pulses ?? bpb)
+    const taps = ones.length >= 2 ? { bars: ones, bpb, meter } : undefined
     const next = { ...cur, taps }
     const segs = cifradoSegments(cur.cifrado.events, cur.duration, cur.lyricsAnchors ?? [], cur.lyricsOffset ?? 0, gridOf(next))
     persist({ taps, original: segs })
     if (!cur.corrections) { setBase(segs); setUndo([]) }
-    setNotice(cur.corrections ? 'Compases guardados. Tenés acordes corregidos a mano: tocá «Restaurar original» para ver los acordes acomodados al compás.' : taps ? `Listo: acordes acomodados a ${taps.bars.length} compases marcados.` : 'Se borraron las marcas de pulso.')
+    setNotice(cur.corrections ? 'Compases guardados. Tenés acordes corregidos a mano: tocá «Restaurar original» para ver los acordes acomodados al compás.' : taps ? `Listo: acordes acomodados a ${taps.bars.length} compases${taps.bars.length < bars.length ? ` (marcaste ${bars.length} golpes)` : ''}.` : 'Se borraron las marcas de pulso.')
   }
   function refreshCifrado(s: Song): Song {
     if (s.kind !== 'cifrado' || !s.cifrado?.lines || s.corrections) return s
@@ -745,11 +747,11 @@ export default function App() {
         {barsOpen && song?.cifrado && hasMedia && (
           <section className="card space-y-2" aria-label="Marcar pulso">
             <h2 className="font-semibold">Marcar pulso</h2>
-            <p className="text-xs text-mute">Elegí el compás, dale play y tocá el botón grande cada vez que empieza un compás (el «uno», el golpe fuerte).
-              Marcá toda la canción o la parte que quieras: los acordes se acomodan a tiempos completos. Si te equivocás, «Deshacer».
+            <p className="text-xs text-mute">Elegí el compás, dale play y tocá el botón grande al ritmo: en cada golpe, o solo en el «uno» de cada compás
+              (el golpe fuerte). Empezá a marcar en un «uno». Marcá toda la canción o la parte que quieras: los acordes se acomodan a tiempos completos. Si te equivocás, «Deshacer».
               Si no sabés el compás, dejá 4/4 (vals: 3/4; zamba y chacarera: 6/8; milonga: 2/4).</p>
             <button className="btn-primary h-20 w-full text-2xl" onClick={() => setBarTaps((b) => [...b, fileNow()])}>
-              <Icon name="tap" className="h-6 w-6" /> Uno · {barTaps.length} marcado{barTaps.length === 1 ? '' : 's'}</button>
+              <Icon name="tap" className="h-6 w-6" /> Golpe · {barTaps.length} marcado{barTaps.length === 1 ? '' : 's'}</button>
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="text-mute">Compás:</span>
               {Object.keys(METERS).map((m) => <button key={m} className={`btn min-h-9 px-3 ${barMeter === m ? 'bg-accent text-accent-fg' : ''}`} aria-pressed={barMeter === m} onClick={() => setBarMeter(m)}>{m}</button>)}

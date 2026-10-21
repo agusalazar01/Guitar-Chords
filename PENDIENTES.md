@@ -258,3 +258,18 @@ Sigue pendiente:
 - Barra de compás (pedido: simple y bien a la vista): un casillero por tiempo, más alto, el acorde escrito grande en el tiempo donde
   entra (el que sigue sonando al empezar el compás, atenuado), tiempo actual en color de acento, el «uno» con borde a la izquierda,
   avanza de compás en compás (2 compases a la vista; 1 en 6/8 y 12/8). Con «Marcar pulso» usa los «uno» marcados y el compás elegido.
+
+## 18. v0.8.6 — barra de compás (video del 21/10)
+- Nombres cortados («E…», «Ds…»): ahora el nombre ocupa los casilleros vacíos que le siguen dentro del compás y achica la letra
+  solo si hace falta; casilleros más bajos (h-11).
+- Acordes salteados: antes solo se escribía el acorde que sonaba justo en el golpe; un acorde que entraba entre golpes no aparecía.
+  Ahora cada acorde se asigna al tiempo donde entra (lib/beatgrid.ts) y si entran dos en el mismo tiempo se escriben los dos.
+- Zafar (G corto): las líneas de LRCLIB empiezan en la anacrusa (~0,6–0,8 s antes del «uno»), así que el Am siguiente entra antes
+  y le roba tiempo al G (Am 2,8 s · Dm 1,5 · G 0,5). Simulado con «Marcar pulso» (uno cada 2,4 s): Am 2,5 · Dm 1,2 · G 1,2 = lo
+  correcto. Sin pulso marcado no hay forma confiable de saberlo (un corrimiento general empeora el promedio, ya medido).
+- «Marqué el pulso en Zafar y no cambió nada»: lo más probable es que se marcó cada golpe (el nombre «pulso» lo invita) y la app
+  tomaba cada marca como un compás → compases de 0,6 s, los acordes casi no se movían (simulado: G 0,7 s). Ahora barsFromTaps
+  acepta las dos formas: si las marcas son golpes, la primera es un «uno» y se toma una de cada N golpes (6/8: 2, 12/8: 4),
+  tolerando golpes salteados. El «uno» no se puede deducir de los acordes (con los tiempos de la letra caen en cualquier golpe
+  por igual, medido), por eso se pide empezar en un «uno». Zafar simulado marcando golpes: Am 2,4 · Dm 1,2 · G 1,2.
+- placeOnBeats: dos líneas podían poner acordes en el mismo golpe y uno desaparecía; ahora no se repite golpe.

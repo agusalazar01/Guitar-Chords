@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { alignCifrado, cifradoLyrics, cifradoMeta, cifradoSegments, lyricsFromChords, isTabLine, compressToSung, gridFromBars, METERS, midBeat, MIN_CHORD_GAP, placeOnBeats, normalizeChord, parseCifrado, uncoveredParts, upgradeCifrado } from './cifrado.ts'
+import { alignCifrado, cifradoLyrics, cifradoMeta, cifradoSegments, lyricsFromChords, isTabLine, compressToSung, barsFromTaps, gridFromBars, METERS, midBeat, MIN_CHORD_GAP, placeOnBeats, normalizeChord, parseCifrado, uncoveredParts, upgradeCifrado } from './cifrado.ts'
 import { addAnchor } from './lyrics.ts'
 
 test('normalizeChord: inglés, latino, bemoles y calidades', () => {
@@ -223,4 +223,20 @@ test('Marcar pulso: compases para elegir y tiempo fuerte intermedio', () => {
   assert.equal(midBeat({ bars: [], bpb: 6, meter: '6/8' }), 4)
   assert.equal(midBeat({ bars: [], bpb: 4 }), 3) // marcas guardadas antes de elegir compás
   assert.equal(gridFromBars([0, 3], 6).length, 7)
+})
+
+test('Marcar pulso: sirve marcar cada golpe (la primera marca es un «uno») o solo los «uno»', () => {
+  const golpes = Array.from({ length: 16 }, (_, i) => 10 + i * 0.6)
+  assert.deepEqual(barsFromTaps(golpes, 4), [10, 12.4, 14.8, 17.2])
+  const conHueco = golpes.filter((_, i) => i !== 5) // se saltó un golpe
+  assert.deepEqual(barsFromTaps(conHueco, 4), [10, 12.4, 14.8, 17.2])
+  assert.deepEqual(barsFromTaps([10, 12.4, 14.8, 17.2], 4), [10, 12.4, 14.8, 17.2]) // ya son compases
+  assert.deepEqual(barsFromTaps([10, 11.8, 13.6, 15.4], 2), [10, 11.8, 13.6, 15.4]) // 6/8 marcado por compás
+})
+
+test('Marcar pulso: dos líneas no ponen acordes en el mismo golpe (no desaparece ninguno)', () => {
+  const beats = gridFromBars([0, 2, 4], 4) // golpes cada 0,5 s
+  const pts = [{ t: 0, chord: 'Am' }, { t: 1.7, chord: 'G' }, { t: 1.9, chord: 'C' }]
+  const out = placeOnBeats(pts, [{ t: 0, end: 1.95 }, { t: 1.95, end: 4 }], beats)
+  assert.equal(new Set(out.map((p) => p.t)).size, 3)
 })

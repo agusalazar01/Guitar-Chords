@@ -476,12 +476,34 @@ export function spreadEvents(ev: ChordEvent[]): ChordEvent[] {
 export interface BarTaps { bars: number[]; bpb: number; meter?: string }
 
 /** Compases para elegir al marcar el pulso: tiempos por compás y tiempo fuerte intermedio (0 = ninguno). */
-export const METERS: Record<string, { bpb: number; mid: number }> = {
-  '2/4': { bpb: 2, mid: 0 }, '3/4': { bpb: 3, mid: 0 }, '4/4': { bpb: 4, mid: 3 }, '5/4': { bpb: 5, mid: 4 }, '6/8': { bpb: 6, mid: 4 }, '12/8': { bpb: 12, mid: 7 },
+// pulses: golpes que se sienten (y se marcan) por compás; en 6/8 y 12/8 el golpe es la negra con puntillo.
+export const METERS: Record<string, { bpb: number; mid: number; pulses: number }> = {
+  '2/4': { bpb: 2, mid: 0, pulses: 2 }, '3/4': { bpb: 3, mid: 0, pulses: 3 }, '4/4': { bpb: 4, mid: 3, pulses: 4 },
+  '5/4': { bpb: 5, mid: 4, pulses: 5 }, '6/8': { bpb: 6, mid: 4, pulses: 2 }, '12/8': { bpb: 12, mid: 7, pulses: 4 },
 }
 export const midBeat = (t: BarTaps) => (t.meter && METERS[t.meter] ? METERS[t.meter].mid : t.bpb === 4 ? 3 : 0)
 
 /** Pulsos a partir de los «unos» marcados: cada compás se divide en bpb tiempos iguales. Devuelve [segundo, nº de tiempo]. */
+/** Las marcas del usuario pueden ser cada golpe (el pulso) o solo el «uno» de cada compás. Si parecen golpes (marcas muy
+ *  seguidas para ser compases), la primera marca es un «uno» y se toma una de cada `pulses`. Devuelve los «uno».
+ *  (No se puede deducir el «uno» de los acordes: con los tiempos de la letra caen en cualquier golpe por igual.) */
+export function barsFromTaps(taps: number[], pulses: number): number[] {
+  const t = [...taps].sort((a, b) => a - b)
+  if (t.length < 2 || pulses < 2) return t
+  const gaps = t.slice(1).map((x, i) => x - t[i]).sort((a, b) => a - b)
+  const med = gaps[gaps.length >> 1]
+  const beats = med < 0.8 || (med < 1.2 && pulses >= 3) // un compás de 3 o más golpes en menos de 1,2 s sería rapidísimo
+  if (!beats || t.length < 2 * pulses) return t
+  // si se saltó o se duplicó un golpe, se reacomoda contando golpes por tiempo y no por cantidad de marcas
+  const out = [t[0]]
+  let n = 0
+  for (let i = 1; i < t.length; i++) {
+    n += Math.max(1, Math.round((t[i] - t[i - 1]) / med))
+    while (n >= pulses) { n -= pulses; out.push(+(t[i] - n * med).toFixed(3)) }
+  }
+  return out
+}
+
 export function gridFromBars(bars: number[], bpb: number): [number, number][] {
   const b = [...bars].sort((x, y) => x - y), out: [number, number][] = []
   for (let i = 0; i + 1 < b.length; i++) { const d = (b[i + 1] - b[i]) / bpb; for (let k = 0; k < bpb; k++) out.push([b[i] + k * d, k + 1]) }
@@ -496,10 +518,11 @@ export function placeOnBeats(pts: { t: number; chord: string }[], lines: { t: nu
   if (beats.length < 2) return pts
   const out = pts.map((p) => ({ ...p }))
   const step = (beats[beats.length - 1][0] - beats[0][0]) / (beats.length - 1)
+  let used = -Infinity // último golpe ocupado: dos líneas no pueden poner acordes en el mismo golpe (uno desaparecería)
   for (const L of lines) {
     const idx = out.map((p, i) => [p, i] as const).filter(([p]) => p.t >= L.t - 0.06 && p.t < L.end - 0.06).map(([, i]) => i)
     if (!idx.length) continue
-    const slots = beats.filter((b) => b[0] >= L.t - pre * step && b[0] < L.end - 0.3 * step)
+    const slots = beats.filter((b) => b[0] >= L.t - pre * step && b[0] > used + 0.01 && b[0] < L.end - 0.3 * step)
     if (slots.length < idx.length) continue
     const n = idx.length, m = slots.length, INF = 1e9
     const cost: number[][] = [], from: number[][] = []
@@ -513,6 +536,7 @@ export function placeOnBeats(pts: { t: number; chord: string }[], lines: { t: nu
       }
     }
     let q = cost[n - 1].indexOf(Math.min(...cost[n - 1]))
+    used = slots[q][0]
     for (let k = n - 1; k >= 0; k--) { out[idx[k]].t = slots[q][0]; q = from[k][q] }
   }
   return out.sort((a, b) => a.t - b.t)

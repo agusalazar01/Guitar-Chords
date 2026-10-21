@@ -227,3 +227,18 @@ Sigue pendiente:
     contrario; con 31 referencias exactas no se sostiene).
   · Fallan del todo los cifrados sin acordes sobre la letra (solo tablatura: «Blackbird», «We Will Rock You»).
   Próximo paso propuesto: ubicar los cambios dentro de la línea con un pulso regular estimado de la propia letra en vez de por letras.
+
+## 16. v0.8.4 — medición con 163 canciones con referencia exacta (ChoCo: The Beatles, Queen)
+- Datos traídos desde el Chrome del usuario (Cifra Club + LRCLIB de igual duración + anotaciones ChoCo desde GitHub) y guardados
+  en el navegador (IndexedDB «mc-eval» en cifraclub.com) para próximas rondas; nada de eso entra al repositorio.
+- Hallazgos:
+  · El 78 % de los cambios de acorde caen en el primer tiempo del compás (12 % en el tercero).
+  · Ubicar los acordes sobre el pulso: aun con el compás real, el acierto total sube solo ~2 puntos; estimar el compás solo con
+    la letra no fue fiable (empeora). Queda para cuando haya pulso del audio (MP3 propio).
+  · Lo que funciona: ubicar las palabras solo en la parte cantada de cada línea (no estirarlas hasta el silencio siguiente).
+- Cambio aplicado (versión prudente: ritmo de canto típico de la canción, solo comprime líneas seguidas de una pausa):
+  grupo de comprobación 53,2 % → 55,7 %; error típico 0,69 → ~0,6 s; no empeora Queen (48,2 → 48,4 %); empeora 26 de 163.
+  (La versión agresiva daba 56,9 % pero empeoraba Queen y «Zafar»; se descartó por el repertorio del usuario.)
+- Dónde se pierde el resto: con tolerancia de ±0,5 s el acierto sería 66,6 %, ±1 s 73,4 %, ±2 s 79,3 %; el cifrado trae el acorde
+  correcto el 96 % del tiempo. O sea: el límite es el tiempo exacto dentro de la línea, no los acordes. LRCLIB no trae tiempos
+  por palabra en ninguna de las 181 letras.

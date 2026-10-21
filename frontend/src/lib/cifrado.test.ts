@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { alignCifrado, cifradoLyrics, cifradoMeta, cifradoSegments, lyricsFromChords, isTabLine, MIN_CHORD_GAP, normalizeChord, parseCifrado, uncoveredParts, upgradeCifrado } from './cifrado.ts'
+import { alignCifrado, cifradoLyrics, cifradoMeta, cifradoSegments, lyricsFromChords, isTabLine, compressToSung, MIN_CHORD_GAP, normalizeChord, parseCifrado, uncoveredParts, upgradeCifrado } from './cifrado.ts'
 import { addAnchor } from './lyrics.ts'
 
 test('normalizeChord: inglés, latino, bemoles y calidades', () => {
@@ -192,4 +192,15 @@ test('fillSections: una estrofa repetida en dos mitades copia cada mitad de la e
   assert.deepEqual([40, 43, 46, 49, 52].map((t) => at(ev, t)), ['Bm', 'F#m7', 'Em7', 'D7', 'C#7'])
   const raw = alignCifrado(parseCifrado(txt), lrc, { fill: false })
   assert.ok(raw.length < ev.length)
+})
+
+test('compressToSung: un acorde de mitad de línea seguido de una pausa se ubica en la parte cantada; el del comienzo no se mueve', () => {
+  const sung = [
+    { t: 10, text: 'una linea cantada de corrido' }, { t: 13, text: 'otra linea cantada seguida' },
+    { t: 16, text: 'esta tiene una pausa larga' }, { t: 24, text: 'y vuelve el canto normal' }, { t: 27, text: 'final' },
+  ]
+  const ev = [{ l: 10, chord: 'C' }, { l: 16, chord: 'G' }, { l: 20, chord: 'Am' }, { l: 24, chord: 'F' }]
+  const out = compressToSung(ev, sung)
+  assert.equal(out[0].l, 10); assert.equal(out[1].l, 16); assert.equal(out[3].l, 24)
+  assert.ok(out[2].l < 19 && out[2].l > 16, `Am en la parte cantada: ${out[2].l}`)
 })

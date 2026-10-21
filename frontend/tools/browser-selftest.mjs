@@ -20,7 +20,7 @@ for (const [name, type] of [['Chromium (Chrome / WebView de Android)', chromium]
   await browser.close()
 }
 
-// Prueba de interfaz (Chromium): «+ Nueva», marcar acordes sobre un video de YouTube, guardado local y reapertura automática.
+// Prueba de interfaz (Chromium): «+ Nueva», pegar acordes para un video de YouTube, guardado local y reapertura automática.
 // No depende de que YouTube cargue: la marca usa el tiempo del reproductor (0 s si el video no llegó a cargar).
 {
   const browser = await chromium.launch(), page = await browser.newPage(), errors = []
@@ -33,12 +33,15 @@ for (const [name, type] of [['Chromium (Chrome / WebView de Android)', chromium]
   const search = page.getByPlaceholder('Canción, artista o enlace de YouTube')
   const pick = async () => { await search.fill('https://www.youtube.com/watch?v=dQw4w9WgXcQ'); await search.press('Enter') }
   await step('elegir un video por enlace', pick)
-  await step('abrir «Marcar a mano»', () => page.getByRole('button', { name: 'Marcar a mano' }).first().click({ timeout: 10000 }))
-  await step('marcar un acorde (C)', () => page.getByRole('button', { name: 'C', exact: true }).first().click({ timeout: 10000 }))
+  await step('pegar un cifrado para el video (sin acordes todavía)', async () => {
+    await page.getByRole('button', { name: 'Pegar cifrado' }).first().click({ timeout: 10000 })
+    await page.getByLabel('Cifrado').fill('C           G\nPrimera línea de prueba\nAm          F\nSegunda línea de prueba')
+    await page.getByRole('button', { name: 'Usar estos acordes' }).click()
+  })
   await step('aparecen los acordes y la canción queda en «Mi cancionero»', async () => {
     await page.getByLabel('Secuencia de acordes').waitFor({ timeout: 10000 })
     await page.getByRole('button', { name: 'Abrir Mi cancionero' }).click()
-    await page.getByRole('dialog', { name: 'Mi cancionero' }).getByText('acordes marcados').first().waitFor({ timeout: 10000 })
+    await page.getByRole('dialog', { name: 'Mi cancionero' }).getByText('acordes del cancionero').first().waitFor({ timeout: 10000 })
     await page.getByRole('dialog', { name: 'Mi cancionero' }).getByRole('button', { name: 'Cerrar' }).click()
   })
   await step('«Nueva canción» vuelve al inicio sin recargar y limpia el buscador', async () => {

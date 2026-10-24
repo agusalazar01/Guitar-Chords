@@ -7,6 +7,9 @@ import Songbook from './components/Songbook.tsx'
 import LyricsView from './components/LyricsView.tsx'
 import type { Job } from './components/Panels.tsx'
 import BeatGrid from './components/BeatGrid.tsx'
+import Tuner from './components/Tuner.tsx'
+import MetronomePanel from './components/MetronomePanel.tsx'
+import { Metronome, bpmFromBeats, type ClickSound } from './lib/metronome.ts'
 import ChordStrip from './components/ChordStrip.tsx'
 import { useAudioPlayer } from './hooks/useAudioPlayer.ts'
 import { useYouTubePlayer } from './hooks/useYouTubePlayer.ts'
@@ -112,6 +115,17 @@ export default function App() {
   const [retimeOpen, setRetimeOpen] = useState(false) // «Marcar cambios»: tocar en cada cambio de acorde
   const [held, setHeld] = useState(-1) // «Marcar cambios»: el acorde que queda quieto en pantalla hasta el próximo toque
   const heldStack = useRef<number[]>([])
+  const [tunerOpen, setTunerOpen] = useState(false) // afinador (usa el micrófono solo mientras está abierto)
+  const metRef = useRef<Metronome | null>(null) // metrónomo: sigue sonando aunque se cierre su pantalla
+  if (!metRef.current) {
+    const m = new Metronome(); m.bpm = store.get('metBpm', 100); m.sound = store.get<ClickSound>('metSound', 'clic')
+    const mt = METERS[store.get('metMeter', '4/4')] ?? METERS['4/4']; m.bpb = mt.bpb; m.mid = mt.mid
+    metRef.current = m
+  }
+  const [metOpen, setMetOpen] = useState(false)
+  const [metRunning, setMetRunning] = useState(false)
+  const [metFollow, setMetFollow] = useState(false)
+  const metSuggestedFor = useRef<string | null>(null)
   const [barsOpen, setBarsOpen] = useState(false) // «Marcar pulso»: tocar en cada «uno» mientras suena
   const [barTaps, setBarTaps] = useState<number[]>([])
   const [barMeter, setBarMeter] = useState('4/4')
@@ -641,6 +655,24 @@ export default function App() {
     return song?.beats?.length ? song.beats : estimateBeats(segments, dur)
   }, [taps, song?.beats, segments, song?.duration, player.duration])
   const gridDownbeat = taps ? 0 : song?.beats?.length ? song.downbeat ?? 0 : 0
+  // Metrónomo: pulso sugerido (análisis del audio o «Marcar pulso») y «Ir con la canción» (golpes de la canción mientras suena)
+  const metCanFollow = !!(taps || (song?.audio && song.beats?.length))
+  const metSuggested = taps ? bpmFromBeats(gridBeats) : song?.bpm ? Math.round(song.bpm) : song?.audio && song.beats?.length ? bpmFromBeats(song.beats) : null
+  const clock = useRef({ t: 0, stamp: 0, playing: false, rate: 1 })
+  clock.current = { t: Math.max(0, player.time - eo), stamp: performance.now(), playing: player.playing, rate }
+  useEffect(() => {
+    const m = metRef.current!
+    m.follow = metFollow && metCanFollow ? {
+      time: () => { const c = clock.current; return c.t + (c.playing ? ((performance.now() - c.stamp) / 1000) * c.rate : 0) },
+      playing: () => clock.current.playing, rate: () => clock.current.rate, beats: gridBeats, downbeat: gridDownbeat,
+    } : null
+  }, [metFollow, metCanFollow, gridBeats, gridDownbeat])
+  function openMetronome() {
+    const m = metRef.current!
+    if (!metRunning && metSuggested && metSuggestedFor.current !== (song?.id ?? null)) { m.bpm = metSuggested; metSuggestedFor.current = song?.id ?? null }
+    setMetOpen(true)
+  }
+  function setMetronome(on: boolean) { const m = metRef.current!; if (on) m.start(); else m.stop(); setMetRunning(on) }
   const bpos = taps || song?.beats?.length ? beatPosition(gridBeats, viewTime, gridDownbeat, bpb) : null
   const info = [song?.key && `Tonalidad: ${song.key}${song.kind === 'cifrado' ? ' (según la página)' : ''}`,
     song?.cifrado?.capo && `la página indica cejilla en el ${song.cifrado.capo}: los acordes ya están escritos para tocar con esa cejilla`, song?.bpm && `≈ ${Math.round(song.bpm)} bpm`, bpos && `compás ${bpos.bar}, tiempo ${bpos.inBar + 1} (${taps ? `pulso marcado, ${taps.meter ?? `${taps.bpb} tiempos`}` : 'estimado, 4/4'})`].filter(Boolean).join(' · ')
@@ -663,6 +695,9 @@ export default function App() {
             {installEvt && <button className="btn mr-1" onClick={() => installEvt.prompt?.()}>Instalar</button>}
             <button className="icon-btn" onClick={newSong} disabled={!!job} aria-label="Nueva canción" title="Nueva canción"><Icon name="plus" /></button>
             <button onClick={() => setSearchOpen((x) => !x)} className={`icon-btn ${searchOpen ? 'bg-panel2' : ''}`} aria-label="Buscar canción" aria-expanded={searchOpen}><Icon name="search" /></button>
+            {metRunning ? <button className="btn mr-1 min-h-9 bg-accent px-2 text-accent-fg" onClick={openMetronome} aria-label="Metrónomo sonando: abrir">♩ {metFollow && metCanFollow ? 'canción' : metRef.current!.bpm}</button>
+              : <button className="icon-btn" onClick={openMetronome} aria-label="Metrónomo" title="Metrónomo"><Icon name="metronome" /></button>}
+            <button className="icon-btn" onClick={() => { player.pause(); setTunerOpen(true) }} aria-label="Afinador" title="Afinador"><Icon name="tuner" /></button>
             <button onClick={() => setSettings((x) => !x)} className={`icon-btn ${settings ? 'bg-panel2' : ''}`} aria-label="Ajustes" aria-expanded={settings}><Icon name="gear" /></button>
           </div>
         </div>
@@ -915,6 +950,9 @@ export default function App() {
           </div>)}
       </main>
 
+      {tunerOpen && <Tuner onClose={() => setTunerOpen(false)} />}
+      {metOpen && <MetronomePanel met={metRef.current!} running={metRunning} onRunning={setMetronome} onClose={() => setMetOpen(false)}
+        suggested={metSuggested} canFollow={metCanFollow} follow={metFollow} onFollow={setMetFollow} />}
       <footer className="shrink-0 bg-panel px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-4px_16px_rgba(0,0,0,.18)]">
         {videoId && audioUrl && (
           <div className="mb-1 flex gap-1 text-xs" role="group" aria-label="Fuente de reproducción">

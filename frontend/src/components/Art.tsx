@@ -46,7 +46,7 @@ export function FlagUY({ className = '' }: { className?: string }) {
 }
 
 /** Íconos de línea simples (24×24). */
-export function Icon({ name, className = 'h-5 w-5' }: { name: 'menu' | 'plus' | 'search' | 'gear' | 'lyrics' | 'chords' | 'more' | 'share' | 'download' | 'upload' | 'next' | 'prev' | 'tap'; className?: string }) {
+export function Icon({ name, className = 'h-5 w-5' }: { name: 'menu' | 'plus' | 'search' | 'gear' | 'lyrics' | 'chords' | 'more' | 'share' | 'download' | 'upload' | 'next' | 'prev' | 'tap' | 'tuner' | 'metronome'; className?: string }) {
   const p: Record<string, React.ReactNode> = {
     menu: <path d="M4 7h16M4 12h16M4 17h16" />,
     plus: <path d="M12 5v14M5 12h14" />,
@@ -61,6 +61,8 @@ export function Icon({ name, className = 'h-5 w-5' }: { name: 'menu' | 'plus' | 
     next: <path d="M9 5l7 7-7 7" />,
     prev: <path d="M15 5l-7 7 7 7" />,
     tap: <><circle cx="12" cy="12" r="3" /><circle cx="12" cy="12" r="7.5" /></>,
+    metronome: <><path d="M9 3h6l4 18H5L9 3z" /><path d="M12 16l5-9" /></>,
+    tuner: <><path d="M9 3v8a3 3 0 0 0 6 0V3" /><path d="M12 14v7" /></>,
   }
   return <svg viewBox="0 0 24 24" className={`${className} fill-none stroke-current`} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{p[name]}</svg>
 }

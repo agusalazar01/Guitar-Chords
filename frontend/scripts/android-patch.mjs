@@ -80,3 +80,16 @@ if (!g.includes('signingConfigs.mc')) {
   fs.writeFileSync(gradle, g)
 }
 console.log('Android: ícono, pantalla de inicio, compartir archivos y firma' + (process.env.MC_KEYSTORE ? ' FIJA' : ' de depuración (sin clave fija)') + '.')
+
+// v0.9.0: afinador → permiso de micrófono (la página lo pide con getUserMedia; Capacitor muestra el pedido de permiso de Android).
+{
+  let m = fs.readFileSync(man, 'utf8')
+  const perms = ['android.permission.RECORD_AUDIO', 'android.permission.MODIFY_AUDIO_SETTINGS'].filter((p) => !m.includes(p))
+  if (perms.length) {
+    const i = m.indexOf('<application')
+    if (i < 0) throw new Error('No encontré <application en ' + man)
+    m = m.slice(0, i) + perms.map((p) => `<uses-permission android:name="${p}" />\n    `).join('') + m.slice(i)
+    fs.writeFileSync(man, m)
+  }
+  console.log('Android: permiso de micrófono para el afinador.')
+}

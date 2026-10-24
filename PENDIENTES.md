@@ -317,3 +317,19 @@ Sigue pendiente:
 - Barra de tiempos que «a veces no aparece»: con acordes de ritmo irregular (cifrado + letra) la estimación del pulso se
   descartaba y la barra desaparecía; tampoco había tiempos antes del primer acorde. Ahora siempre hay barra (pulso estimado, o
   0,5 s si no se puede estimar) desde el principio de la canción; se ajusta con «Marcar pulso».
+
+## 22. v0.9.0 (en preparación) — afinador
+- Pedido: afinador cromático. Botón (diapasón) arriba, al lado de Ajustes. Pantalla completa: la nota en cifrado americano
+  (A, C#…) grande; un círculo que corre de izquierda (baja) a derecha (alta) sobre ±50 cents, rojo desafinado → verde y centrado
+  afinado (±5 cents); texto «Baja: apretá» / «Alta: aflojá» / «¡Afinada!»; Hz y cents; las 6 cuerdas (E A D G B E) con la que
+  suena resaltada. La de referencia 440 Hz por defecto, ajustable de a 1 Hz (400–480) y «Volver a 440»; se recuerda.
+- Detección: YIN sobre 4096 muestras cada 50 ms, mediana de las últimas lecturas; probado con tonos con armónicos de las 6
+  cuerdas (error < 2 cents). El micrófono se usa solo con el afinador abierto (no graba ni envía nada); al abrirlo se pausa la
+  canción. APK: permisos RECORD_AUDIO y MODIFY_AUDIO_SETTINGS (Capacitor muestra el pedido de Android la primera vez).
+- Metrónomo (pedido, interfaz como la de Chordify): botón arriba. Pantalla: −10 −1 [bpm] +1 +10, sonido (Clic / Madera / Pitido),
+  compás (2/4 … 12/8), círculo grande para poner en marcha/parar (late en el «uno»), casilleros de los tiempos (el actual
+  resaltado). Se cierra la pantalla y sigue sonando con la canción («♩ 100» arriba para volver a abrirlo). Los golpes se
+  programan en el reloj de audio (parejo aunque la pantalla esté ocupada).
+- Con la canción: pulso sugerido (del análisis del MP3 o de «Marcar pulso»), se pone solo al abrir el metrónomo en esa canción y
+  se puede cambiar; «Ir con la canción»: mientras suena, los golpes siguen los de la canción (acelera o frena con ella) y respeta
+  la velocidad de reproducción.

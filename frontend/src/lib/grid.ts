@@ -5,10 +5,19 @@ import type { Segment } from './types.ts'
  *  Devuelve los tiempos de los pulsos desde el primer acorde, o [] si hay muy pocos cambios para estimar. */
 export function estimateBeats(segments: Segment[], duration: number): number[] {
   const starts = segments.filter((s) => s.chord !== 'N').map((s) => s.start)
-  if (starts.length < 4) return []
+  if (!starts.length || !(duration > 0)) return []
+  // la barra de tiempos siempre se muestra: si los cambios son muy irregulares para estimar el pulso, se usa uno de 0,5 s
+  // (120 por minuto) desde el primer acorde; la barra dice «pulso estimado» y se ajusta con «Marcar pulso»
+  const grid = (t0: number, p: number) => {
+    const out: number[] = []
+    let a = t0; while (a - p >= 0) a -= p
+    const end = Math.max(duration, starts[starts.length - 1] + 4)
+    for (let t = a; t < end; t += p) out.push(Math.round(t * 1000) / 1000)
+    return out
+  }
   const gaps: number[] = []
   for (let i = 1; i < starts.length; i++) { const d = starts[i] - starts[i - 1]; if (d > 0.3 && d < 12) gaps.push(d) }
-  if (gaps.length < 3) return []
+  if (gaps.length < 3) return grid(starts[0], 0.5)
   const ps: number[] = [], sc: number[] = []
   for (let p = 1.1; p >= 0.35; p -= 0.005) {
     let s = 0
@@ -20,11 +29,8 @@ export function estimateBeats(segments: Segment[], duration: number): number[] {
   let i = sc.findIndex((v) => v >= top - 0.05)
   while (i + 1 < sc.length && sc[i + 1] >= sc[i]) i++
   const best = sc[i], bp = ps[i]
-  if (!bp || best < 0.3) return []
-  const out: number[] = []
-  const end = Math.max(duration, starts[starts.length - 1] + 4)
-  for (let t = starts[0]; t < end; t += bp) out.push(Math.round(t * 1000) / 1000)
-  return out
+  if (!bp || best < 0.3) return grid(starts[0], 0.5)
+  return grid(starts[0], bp)
 }
 
 /** Acorde simplificado: la tríada (mayor o menor), sin séptimas, novenas, sus ni bajo. dim y aug se conservan. */

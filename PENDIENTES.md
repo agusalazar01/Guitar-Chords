@@ -304,3 +304,16 @@ Sigue pendiente:
   de golpe), sin juntar dos cambios; lo analizado queda guardado igual (se aplica al mostrar), «Borrar marcas» vuelve atrás.
 - Letra de los MP3: se leen artista y título escritos dentro del archivo (ID3v2/ID3v1) y se buscan con eso; si no hay, el nombre
   del archivo como antes.
+
+## 21. v0.8.9 (en preparación) — video del 24/10 («Deseos de cosas imposibles»)
+- Buscador de letras: a veces daba error aunque LRCLIB tiene la letra (fallo pasajero). Ahora cada consulta se reintenta hasta 3
+  veces; si no encuentra nada, prueba con el texto limpio (sin paréntesis, «letra», «video oficial», «feat.») y separando artista
+  y título (track_name / artist_name).
+- «Ver toda» la letra no se podía cerrar (el botón estaba dentro de «⚙ Ajustar letra»): ahora hay «Cerrar la letra completa»
+  justo arriba de la lista.
+- «La letra empieza ahora» siempre disponible en «⚙ Ajustar letra» (pedido: a veces solo aparecía «Esta línea empieza ahora»):
+  corre TODA la letra para que la primera línea empiece en ese momento (borra los otros ajustes). «Esta línea» y «La próxima
+  empieza ahora» siguen donde estaban, dentro de «⚙ Ajustar letra» (se probó ponerlas debajo de la letra: el usuario no lo quería).
+- Barra de tiempos que «a veces no aparece»: con acordes de ritmo irregular (cifrado + letra) la estimación del pulso se
+  descartaba y la barra desaparecía; tampoco había tiempos antes del primer acorde. Ahora siempre hay barra (pulso estimado, o
+  0,5 s si no se puede estimar) desde el principio de la canción; se ajusta con «Marcar pulso».

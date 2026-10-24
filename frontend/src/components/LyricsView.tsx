@@ -53,6 +53,7 @@ export default function LyricsView({ lyrics, time, offset, anchors, onAdjust, on
           </div>
         )
       ) : <p className="text-sm text-mute">Esta letra no tiene tiempos: se muestra completa.</p>}
+      {lines && full && <button className="btn mt-2 min-h-9 w-full text-xs" onClick={() => { setFull(false); setTapSync(false) }}>Cerrar la letra completa</button>}
       {(full || !lines) && (
         <ol className="mt-2 max-h-72 space-y-1 overflow-y-auto rounded-xl bg-panel p-2 text-sm">
           {lines ? lines.map((l, i) => (
@@ -75,10 +76,12 @@ export default function LyricsView({ lyrics, time, offset, anchors, onAdjust, on
       </div>}
       {tools && !followsChords && <div className="mt-2 space-y-2 text-xs text-mute">
         {lines && <>
-          <p>Si la letra no va con el canto: tocá <b>«Esta línea empieza ahora»</b> justo cuando se empieza a cantar la línea grande, o
-            <b> «Sincronizar tocando»</b> y tocá en la lista cada línea cuando se canta. La letra y los acordes se corren juntos.</p>
+          <p><b>«La letra empieza ahora»</b>: tocalo cuando se empieza a cantar la primera línea y toda la letra se corre a ese momento.
+            Para afinar después: <b>«Esta línea empieza ahora»</b> justo cuando se canta la línea grande, o <b>«Sincronizar tocando»</b> y
+            tocá en la lista cada línea cuando se canta. La letra y los acordes se corren juntos.</p>
           <div className="flex flex-wrap items-center gap-2">
-            {!intro && cur && <button className="btn-primary min-h-10 px-3 text-sm" onClick={() => onAdjust({ anchors: addAnchor(anchors, lines[idx].t, time - offset) })}>Esta línea empieza ahora</button>}
+            {first && <button className="btn-primary min-h-10 px-3 text-sm" onClick={() => onAdjust({ offset: 0, anchors: [{ l: first.t, t: time }] })}>La letra empieza ahora</button>}
+            {!intro && cur && <button className={small} onClick={() => onAdjust({ anchors: addAnchor(anchors, lines[idx].t, time - offset) })}>Esta línea empieza ahora</button>}
             {!intro && nextLine && <button className={small} onClick={() => onAdjust({ anchors: addAnchor(anchors, nextLine.t, time - offset) })}>La próxima empieza ahora</button>}
             <button className={`${small} ${tapSync ? 'bg-accent text-accent-fg' : ''}`} aria-pressed={tapSync} onClick={() => { setTapSync((x) => !x); setFull(true) }}>{tapSync ? 'Terminar de sincronizar' : 'Sincronizar tocando'}</button>
           </div>

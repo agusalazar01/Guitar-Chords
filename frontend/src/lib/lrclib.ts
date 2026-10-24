@@ -20,14 +20,40 @@ async function getJson(url: string, who = 'LRCLIB'): Promise<unknown> {
   } finally { clearTimeout(timer) }
 }
 
-/** Busca letras por texto libre (título, artista o ambos). Lanza un error con un mensaje claro si no hay conexión. */
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+/** LRCLIB a veces tarda o devuelve un error pasajero: hasta 3 intentos antes de dar el error. */
+async function retry<T>(f: () => Promise<T>, tries = 3): Promise<T> {
+  for (let i = 1; ; i++) {
+    try { return await f() } catch (e) { if (i >= tries) throw e; await wait(800 * i) }
+  }
+}
+/** Texto de búsqueda sin lo que suele estorbar: paréntesis, «letra», «video oficial», «feat.», signos. */
+export function cleanQuery(q: string): string {
+  return q.replace(/[([{].*?[)\]}]/g, ' ').replace(/\b(letra|lyrics?|video|oficial|official|audio|en vivo|live|remaster(ed)?|hd|hq)\b/gi, ' ')
+    .replace(/\b(feat|ft)\.?\s.*$/i, ' ').replace(/[^\p{L}\p{N}' -]+/gu, ' ').replace(/\s+/g, ' ').trim()
+}
+
+/** Busca letras por texto libre (título, artista o ambos). Si no encuentra nada, prueba con el texto limpio y separando
+ *  artista y título («Artista - Título»). Lanza un error con un mensaje claro si no hay conexión. */
 export async function searchLyrics(q: string): Promise<LyricResult[]> {
-  try {
-    const data = await getJson(`${BASE}/search?${new URLSearchParams({ q })}`)
+  const ask = async (p: Record<string, string>) => {
+    const data = await retry(() => getJson(`${BASE}/search?${new URLSearchParams(p)}`))
     return Array.isArray(data) ? (data as LyricResult[]) : []
+  }
+  try {
+    let res = await ask({ q })
+    const c = cleanQuery(q)
+    if (!res.length && c && c !== q.trim()) res = await ask({ q: c })
+    if (!res.length) {
+      const parts = q.split(/\s+[-–—|]\s+/).map(cleanQuery).filter(Boolean)
+      if (parts.length >= 2) res = await ask({ track_name: parts[1], artist_name: parts[0] })
+      if (!res.length && parts.length >= 2) res = await ask({ track_name: parts[1] })
+      if (!res.length && c) res = await ask({ track_name: c })
+    }
+    return res
   } catch (e) {
     const m = (e as Error).message
-    throw new Error(m.startsWith('LRCLIB') ? `No se pudo buscar la letra (${m}).` : 'No se pudo buscar la letra: revisá la conexión a Internet.')
+    throw new Error(m.startsWith('LRCLIB') ? `No se pudo buscar la letra (${m}). Probá de nuevo en un momento.` : 'No se pudo buscar la letra: revisá la conexión a Internet.')
   }
 }
 

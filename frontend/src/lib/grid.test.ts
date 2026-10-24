@@ -18,5 +18,7 @@ test('estimateBeats: cambios cada 2 y 4 pulsos de 0,5 s', () => {
   assert.ok(b.length > 10)
   const p = b[1] - b[0]
   assert.ok(Math.abs(p - 1) < 0.02 || Math.abs(p - 0.5) < 0.02, `período ${p}`)
-  assert.equal(b[0], 1)
+  assert.ok(b.includes(1) && b[0] >= 0 && b[0] < p + 1e-9, 'la rejilla pasa por el primer acorde y empieza desde el principio')
+  const raro = estimateBeats([{ start: 3, end: 4, chord: 'C', confidence: null }, { start: 4.1, end: 9, chord: 'G', confidence: null }], 30)
+  assert.ok(raro.length > 50, 'con pocos cambios igual hay barra (pulso de 0,5 s)')
 })
